@@ -1,0 +1,16 @@
+{
+  "id": "welcome",
+  "name": "Welcome",
+  "brandName": "Your Company",
+  "logoUrl": "",
+  "bannerUrl": "",
+  "accentColor": "#2563eb",
+  "heading": "Hi {{name}}, welcome to Your Company! 💪",
+  "intro": "Your team can now create digital work orders, monitor the status of operations, and track work completion with just a few clicks.\n\nTo make sure you have full access to our core features, we have upgraded you to our Premium plan for 30 days at no cost to you.",
+  "buttonLabel": "Log in",
+  "buttonUrl": "https://example.com/login",
+  "details": "## ❗ Action needed\n\n**Log in and finish setting up your account**\n\nHere is a quick guide to get you going:\n\n💻 **Log in:** Access your account on [desktop](https://example.com/login) or via the [mobile app](https://example.com/mobile).\n\n👀 **Explore your account:** Check out the layout and features. Need help? Enrol in our [introduction course](https://example.com/course).\n\n👤 **Invite your team:** Bring your team on board by inviting them to join.\n\n🛠️ **Start creating work orders:** Once your team is set up, begin creating and assigning work.\n\nRemember, consistency matters! Log in daily to stay updated on work orders, schedules, and equipment status.",
+  "panelTitle": "Connect with your account rep",
+  "panelText": "Questions about set up or what is included in your Premium trial? [Click here to book a meeting](https://example.com/meeting) for a platform walkthrough and details on plans and features.",
+  "footer": "Your Company, Inc., 123 Example Street, City, Country\n\n[Unsubscribe](https://example.com/unsubscribe)"
+}

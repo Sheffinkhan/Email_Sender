@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email Sender</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Email Sender</h1>
+    <div class="account">
+      <span id="accountLabel">Checking Outlook…</span>
+      <a id="signIn" class="button" href="/auth/login" hidden>Sign in to Outlook</a>
+      <button id="signOut" type="button" class="button quiet" hidden>Sign out</button>
+      <button id="showSetup" type="button" class="button quiet" hidden>Connection</button>
+    </div>
+  </header>
+
+  <p id="notice" class="notice" role="status" hidden></p>
+
+  <section id="setup" class="card setup" hidden>
+    <h2>Connect your Outlook account</h2>
+    <p>This is a one-time step. Microsoft needs an app registration before any program may send from your mailbox.</p>
+    <ol>
+      <li>Open <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Microsoft Entra &rsaquo; App registrations</a> and choose <b>New registration</b>.</li>
+      <li>Name it <b>Email Sender</b>. Under supported account types pick <b>Accounts in any organizational directory and personal Microsoft accounts</b>.</li>
+      <li>Under Redirect URI pick <b>Public client/native (mobile &amp; desktop)</b> and enter <code id="redirectUri"></code></li>
+      <li>Press <b>Register</b>, then copy the <b>Application (client) ID</b> into the box below.</li>
+    </ol>
+    <form id="setupForm" class="grid">
+      <label>Application (client) ID
+        <input id="clientId" required placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off">
+      </label>
+      <label>Tenant
+        <input id="tenant" value="common" list="tenants" autocomplete="off">
+        <small>Leave as <code>common</code> unless the app was registered for one organisation only, then paste that tenant ID.</small>
+      </label>
+      <datalist id="tenants">
+        <option value="common"></option>
+        <option value="consumers"></option>
+        <option value="organizations"></option>
+      </datalist>
+      <div><button class="button" type="submit">Save connection</button></div>
+    </form>
+  </section>
+
+  <main class="layout">
+    <form id="editor" class="column" novalidate>
+      <section class="card">
+        <h2>Send</h2>
+        <label>To
+          <textarea id="to" rows="3" placeholder="anna@client.com, Ben Roy &lt;ben@client.com&gt;"></textarea>
+          <small>Separate addresses with commas or new lines. Each person gets their own separate email. Write <code>Name &lt;email&gt;</code> to fill <code>{{name}}</code>.</small>
+        </label>
+        <label>Subject
+          <input id="subject" maxlength="200" placeholder="Welcome to Your Company">
+        </label>
+        <div class="actions">
+          <button id="send" class="button" type="submit">Send</button>
+          <span id="sendStatus" class="muted"></span>
+        </div>
+        <ul id="results" class="results"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Template</h2>
+        <div class="grid two">
+          <label>Saved templates
+            <select id="templatePicker"></select>
+          </label>
+          <label>Template name
+            <input data-field="name" maxlength="80">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save" class="button" type="button">Save</button>
+          <button id="saveAs" class="button quiet" type="button">Save as new</button>
+          <button id="remove" class="button quiet danger" type="button">Delete</button>
+          <span id="saveStatus" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Content</h2>
+        <p class="muted">Leave a field empty to hide that part. In text fields use <code>**bold**</code>, <code>[link text](https://…)</code>, <code>## Heading</code>, and a blank line for a new paragraph. <code>{{name}}</code> becomes the client's name.</p>
+
+        <div class="grid two">
+          <label>Company name
+            <input data-field="brandName" maxlength="80">
+          </label>
+          <label>Accent colour
+            <input data-field="accentColor" type="color">
+          </label>
+        </div>
+
+        <div class="image-field" data-image="logoUrl">
+          <label>Logo image <span class="muted">(replaces the company name)</span>
+            <input data-field="logoUrl" type="url" placeholder="https://… or upload">
+          </label>
+          <label class="button quiet file">Upload<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></label>
+          <button type="button" class="button quiet" data-clear>Remove</button>
+        </div>
+
+        <div class="image-field" data-image="bannerUrl">
+          <label>Banner image <span class="muted">(600px wide works best)</span>
+            <input data-field="bannerUrl" type="url" placeholder="https://… or upload">
+          </label>
+          <label class="button quiet file">Upload<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></label>
+          <button type="button" class="button quiet" data-clear>Remove</button>
+        </div>
+
+        <label>Greeting
+          <input data-field="heading" maxlength="200">
+        </label>
+        <label>Opening text
+          <textarea data-field="intro" rows="5"></textarea>
+        </label>
+        <div class="grid two">
+          <label>Button text
+            <input data-field="buttonLabel" maxlength="60">
+          </label>
+          <label>Button link
+            <input data-field="buttonUrl" type="url" placeholder="https://…">
+          </label>
+        </div>
+        <label>Main text
+          <textarea data-field="details" rows="12"></textarea>
+        </label>
+        <label>Coloured box title
+          <input data-field="panelTitle" maxlength="200">
+        </label>
+        <label>Coloured box text
+          <textarea data-field="panelText" rows="3"></textarea>
+        </label>
+        <label>Footer
+          <textarea data-field="footer" rows="3"></textarea>
+        </label>
+      </section>
+    </form>
+
+    <aside class="column preview">
+      <div class="card">
+        <h2>Preview <span class="muted">as the first person in To will see it</span></h2>
+        <iframe id="preview" title="Email preview" sandbox></iframe>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>
