@@ -8,6 +8,9 @@ import {
   safeColor,
   safeImage,
   safeLink,
+  SECTIONS,
+  normaliseOrder,
+  youtubeThumbnail,
   type Template,
 } from '../src/render.js';
 
@@ -17,6 +20,7 @@ const anna = { email: 'anna@client.com', name: 'Anna' };
 function template(overrides: Partial<Template> = {}): Template {
   return {
     id: 'welcome',
+    order: [...SECTIONS],
     name: 'Welcome',
     brandName: 'Acme',
     logoUrl: '',
@@ -24,6 +28,9 @@ function template(overrides: Partial<Template> = {}): Template {
     accentColor: '#112233',
     heading: 'Hi {{name}}',
     intro: 'First paragraph.\n\nSecond paragraph.',
+    mediaUrl: '',
+    videoUrl: '',
+    videoLabel: '',
     buttonLabel: 'Log in',
     buttonUrl: 'https://acme.test/login',
     details: '## Next steps\n\n**Log in:** on [desktop](https://acme.test).',
@@ -50,6 +57,30 @@ describe('helpers', () => {
     expect(safeImage(PNG)).toBe(PNG);
     expect(safeImage('data:text/html;base64,PGI+')).toBe('');
     expect(safeImage('file:///c:/logo.png')).toBe('');
+  });
+
+  it('finds the YouTube picture for every link shape', () => {
+    const picture = 'https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg';
+    for (const url of [
+      'https://youtu.be/dQw4w9WgXcQ?si=abc',
+      'https://m.youtube.com/watch?v=dQw4w9WgXcQ&t=10',
+      'https://www.youtube.com/shorts/dQw4w9WgXcQ',
+      'https://youtube.com/embed/dQw4w9WgXcQ',
+    ]) {
+      expect(youtubeThumbnail(url)).toBe(picture);
+    }
+    expect(youtubeThumbnail('https://vimeo.com/123')).toBe('');
+    expect(youtubeThumbnail('https://youtube.com/watch?v=short')).toBe('');
+    expect(youtubeThumbnail('https://youtube.com/channel/abc')).toBe('');
+    expect(youtubeThumbnail('not a link')).toBe('');
+  });
+
+  it('repairs a section order', () => {
+    expect(normaliseOrder(undefined)).toEqual([...SECTIONS]);
+    expect(normaliseOrder('footer')).toEqual([...SECTIONS]);
+    const order = normaliseOrder(['footer', 'bogus', 'logo', 'footer', 7]);
+    expect(order.slice(0, 2)).toEqual(['footer', 'logo']);
+    expect([...order].sort()).toEqual([...SECTIONS].sort());
   });
 
   it('falls back to the default colour', () => {
@@ -107,6 +138,55 @@ describe('renderEmail', () => {
 
   it('shows the banner', () => {
     expect(renderEmail(template({ bannerUrl: PNG }), anna)).toContain(`<img src="${PNG}" alt="" width="600"`);
+  });
+
+  it('shows a GIF on its own without a link', () => {
+    const gif = 'data:image/gif;base64,R0lGODlh';
+    const html = renderEmail(template({ mediaUrl: gif }), anna);
+    expect(html).toContain(`<img src="${gif}" alt="" width="536"`);
+    expect(html).not.toContain('Watch the video');
+  });
+
+  it('links the picture and adds a text link for a video', () => {
+    const html = renderEmail(
+      template({ mediaUrl: 'https://acme.test/thumb.gif', videoUrl: 'https://vimeo.com/123', videoLabel: 'See {{name}}’s demo' }),
+      anna,
+    );
+    expect(html).toContain(
+      '<a href="https://vimeo.com/123"><img src="https://acme.test/thumb.gif" alt="See Anna’s demo"',
+    );
+    expect(html).toContain('&#9654; See Anna’s demo</a>');
+  });
+
+  it('uses the YouTube picture when a YouTube link has no picture', () => {
+    const html = renderEmail(template({ videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' }), anna);
+    expect(html).toContain('<img src="https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg" alt="Watch the video"');
+    expect(html).toContain('&#9654; Watch the video</a>');
+  });
+
+  it('shows only the text link for other videos without a picture', () => {
+    const html = renderEmail(template({ videoUrl: 'https://acme.test/demo.mp4' }), anna);
+    expect(html).not.toContain('<img');
+    expect(html).toContain('<a href="https://acme.test/demo.mp4" style="color:#112233;');
+  });
+
+  it('ignores a video link that is not a web address', () => {
+    const html = renderEmail(template({ videoUrl: 'javascript:alert(1)' }), anna);
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('Watch the video');
+  });
+
+  it('lays the sections out in the template order', () => {
+    const position = (html: string) =>
+      ['Acme Inc.', 'Talk to us', 'Log in</a>', 'Hi Anna</td>', 'First paragraph.'].map((text) => html.indexOf(text));
+    const ascending = (values: number[]) => values.every((value, i) => i === 0 || value > values[i - 1]);
+
+    const reordered = renderEmail(
+      template({ order: normaliseOrder(['footer', 'panel', 'button', 'heading', 'intro']) }),
+      anna,
+    );
+    expect(ascending(position(reordered))).toBe(true);
+    expect(ascending(position(renderEmail(template(), anna)))).toBe(false);
   });
 
   it('leaves out empty sections', () => {

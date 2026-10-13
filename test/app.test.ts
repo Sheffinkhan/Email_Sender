@@ -165,7 +165,7 @@ describe('templates', () => {
 
   it('rejects malformed and oversized requests', async () => {
     expect((await call('POST', '/api/templates', '{ not json')).status).toBe(400);
-    const huge = await call('POST', '/api/templates', { name: 'Big', details: 'x'.repeat(7_000_000) });
+    const huge = await call('POST', '/api/templates', { name: 'Big', details: 'x'.repeat(9_000_000) });
     expect(huge.status).toBe(413);
   });
 });
@@ -225,6 +225,18 @@ describe('send', () => {
     expect(result.status).toBe(400);
     expect(result.data.error).toMatch(message);
     expect(sent).toEqual([]);
+  });
+
+  it('refuses uploads that Outlook would reject for size', async () => {
+    const upload = (bytes: number) => `data:image/gif;base64,${'A'.repeat(bytes)}`;
+    const template = { ...TEMPLATE, bannerUrl: upload(1_400_000), mediaUrl: upload(2_500_000) };
+    const result = await call('POST', '/api/send', request({ template }));
+    expect(result.status).toBe(400);
+    expect(result.data.error).toMatch(/too large together/);
+    expect(sent).toEqual([]);
+
+    const linked = { ...TEMPLATE, bannerUrl: upload(1_400_000), mediaUrl: 'https://acme.test/big.gif' };
+    expect((await call('POST', '/api/send', request({ template: linked }))).status).toBe(200);
   });
 
   it('requires a signed-in mailbox', async () => {

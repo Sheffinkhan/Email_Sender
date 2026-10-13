@@ -36,7 +36,8 @@ Local web app that sends one templated HTML email per recipient from the user's 
 
 - **Microsoft Graph, not Outlook desktop automation or SMTP.** Classic Outlook on the dev machine has no account and Office is unlicensed. Basic-auth SMTP is being retired by Microsoft.
 - **One email per recipient**, never a shared To line. Clients must not see each other's addresses.
-- **Fixed layout, editable fields.** Templates are data, not HTML. New layout sections go in `render.ts` plus a field in `Template`.
+- **Fixed sections, editable fields and order.** Templates are data, not HTML. Each section is built on its own in `render.ts` and output in `Template.order`, so every section must look right next to any other. A new section needs an entry in `SECTIONS`, its fields in `Template`, and a field group plus label in `public/`.
+- **Video is a linked picture**, never an embedded player. Mail clients strip video.
 - **Preview is rendered server-side** by the same `renderEmail` used for sending, so the two cannot drift.
 - Email HTML is table-based with inline styles for Outlook compatibility. Keep it that way.
 - The server binds to `127.0.0.1` and rejects foreign `Host`/`Origin` headers, because it holds a mailbox token.

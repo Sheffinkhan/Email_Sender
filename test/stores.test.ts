@@ -60,6 +60,13 @@ describe('template store', () => {
     expect(await store.get('welcome')).toBeUndefined();
   });
 
+  it('keeps the section order', async () => {
+    const store = createTemplateStore(dir);
+    expect((await store.save({ name: 'Plain' })).order[0]).toBe('logo');
+    await store.save({ name: 'Flipped', order: ['footer', 'heading'] });
+    expect((await store.get('flipped'))?.order.slice(0, 3)).toEqual(['footer', 'heading', 'logo']);
+  });
+
   it('updates in place when an id is given', async () => {
     const store = createTemplateStore(dir);
     const saved = await store.save({ name: 'Welcome' });

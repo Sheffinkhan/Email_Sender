@@ -20,6 +20,8 @@ class BadRequest extends Error {}
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const PREVIEW_RECIPIENT: Recipient = { email: 'client@example.com', name: 'Alex' };
+// Graph refuses sendMail requests over 4 MB, and uploads travel inside the request.
+const MAX_UPLOAD_CHARS = 3_400_000;
 
 function isLocal(url: string): boolean {
   try {
@@ -67,7 +69,7 @@ export function createApp(deps: AppDeps): express.Express {
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
-  app.use(express.json({ limit: '6mb' }));
+  app.use(express.json({ limit: '8mb' }));
   app.use(express.static(publicDir));
 
   app.get('/api/status', async (_req, res) => {
@@ -143,6 +145,15 @@ export function createApp(deps: AppDeps): express.Express {
     if (!subject) throw new BadRequest('Subject is required');
     if (invalid.length) throw new BadRequest(`Not a valid email address: ${invalid.join(', ')}`);
     if (!recipients.length) throw new BadRequest('Add at least one To address');
+
+    const uploads = [template.logoUrl, template.bannerUrl, template.mediaUrl].filter((url) =>
+      url.startsWith('data:'),
+    );
+    if (uploads.join('').length > MAX_UPLOAD_CHARS) {
+      throw new BadRequest(
+        'The uploaded images are too large together (about 2.5 MB at most). Host the GIF online and paste its link instead.',
+      );
+    }
 
     // Fail before the first send rather than once per recipient.
     await auth.getToken();

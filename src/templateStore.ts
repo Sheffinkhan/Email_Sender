@@ -1,13 +1,15 @@
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { Template } from './render.js';
+import { normaliseOrder, type Template } from './render.js';
 
 export class TemplateError extends Error {}
 
-type TemplateField = Exclude<keyof Template, 'id'>;
+type TemplateField = Exclude<keyof Template, 'id' | 'order'>;
 
 // Uploaded images are stored as data URLs, hence the large image limits.
 const IMAGE_LIMIT = 1_500_000;
+// GIFs run larger than still images.
+const MEDIA_LIMIT = 2_800_000;
 const LIMITS: Record<TemplateField, number> = {
   name: 80,
   brandName: 80,
@@ -16,6 +18,9 @@ const LIMITS: Record<TemplateField, number> = {
   accentColor: 7,
   heading: 200,
   intro: 5000,
+  mediaUrl: MEDIA_LIMIT,
+  videoUrl: 2000,
+  videoLabel: 80,
   buttonLabel: 60,
   buttonUrl: 2000,
   details: 10000,
@@ -40,7 +45,7 @@ export function normaliseTemplate(input: unknown): Template {
     throw new TemplateError('Template must be an object');
   }
   const source = input as Record<string, unknown>;
-  const template = { id: '' } as Template;
+  const template = { id: '', order: normaliseOrder(source.order) } as Template;
 
   for (const field of Object.keys(LIMITS) as TemplateField[]) {
     const value = source[field] ?? '';

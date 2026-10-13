@@ -1,11 +1,24 @@
-const MAX_IMAGE_BYTES = 1_000_000;
+const SECTION_LABELS = {
+  logo: 'Logo / company name',
+  banner: 'Banner image',
+  heading: 'Greeting',
+  intro: 'Opening text',
+  media: 'GIF / video',
+  button: 'Button',
+  details: 'Main text',
+  panel: 'Coloured box',
+  footer: 'Footer',
+};
 const BLANK = {
+  order: Object.keys(SECTION_LABELS),
   id: '', name: 'New template', brandName: '', logoUrl: '', bannerUrl: '', accentColor: '#2563eb',
-  heading: '', intro: '', buttonLabel: '', buttonUrl: '', details: '', panelTitle: '', panelText: '', footer: '',
+  heading: '', intro: '', mediaUrl: '', videoUrl: '', videoLabel: '', buttonLabel: '', buttonUrl: '',
+  details: '', panelTitle: '', panelText: '', footer: '',
 };
 
 const $ = (id) => document.getElementById(id);
 const fieldInputs = [...document.querySelectorAll('[data-field]')];
+const orderList = $('order');
 
 let template = { ...BLANK };
 let signedInAs = null;
@@ -41,6 +54,29 @@ function fillForm() {
       if (input.closest('.image-field')) input.placeholder = 'https://… or upload';
     }
   }
+  orderList.replaceChildren(
+    ...template.order.map((id) => {
+      const item = document.createElement('li');
+      item.dataset.section = id;
+      item.tabIndex = 0;
+      item.textContent = SECTION_LABELS[id];
+      return item;
+    }),
+  );
+  arrangeFields();
+}
+
+// The field groups follow the email's order so the form reads like the email.
+function arrangeFields() {
+  for (const id of template.order) {
+    $('fieldGroups').append(document.querySelector(`[data-section-fields="${id}"]`));
+  }
+}
+
+function commitOrder() {
+  template.order = [...orderList.children].map((item) => item.dataset.section);
+  arrangeFields();
+  schedulePreview();
 }
 
 function schedulePreview() {
@@ -139,14 +175,15 @@ for (const input of fieldInputs) {
 
 for (const box of document.querySelectorAll('.image-field')) {
   const field = box.dataset.image;
+  const maxMb = Number(box.dataset.maxMb ?? 1);
   const file = box.querySelector('input[type="file"]');
 
   file.addEventListener('change', () => {
     const [chosen] = file.files;
     file.value = '';
     if (!chosen) return;
-    if (chosen.size > MAX_IMAGE_BYTES) {
-      showNotice('That image is over 1 MB. Use a smaller one.');
+    if (chosen.size > maxMb * 1_000_000) {
+      showNotice(`That file is over ${maxMb} MB. Use a smaller one, or host it online and paste its link.`);
       return;
     }
     const reader = new FileReader();
@@ -164,6 +201,53 @@ for (const box of document.querySelectorAll('.image-field')) {
     renderPreview();
   });
 }
+
+let dragged = null;
+
+// Pointer events cover mouse, pen and touch. The list holds the capture, not
+// the row, because moving a row in the page would release it.
+orderList.addEventListener('pointerdown', (event) => {
+  const item = event.target.closest('li');
+  if (!item || event.button !== 0) return;
+  dragged = item;
+  dragged.classList.add('dragging');
+  orderList.setPointerCapture(event.pointerId);
+});
+
+// The dragged row moves live to wherever it would land.
+orderList.addEventListener('pointermove', (event) => {
+  if (!dragged) return;
+  const next = [...orderList.children].find((item) => {
+    const box = item.getBoundingClientRect();
+    return item !== dragged && event.clientY < box.top + box.height / 2;
+  });
+  if ((next ?? null) !== dragged.nextElementSibling) orderList.insertBefore(dragged, next ?? null);
+});
+
+function endDrag() {
+  if (!dragged) return;
+  dragged.classList.remove('dragging');
+  dragged = null;
+  commitOrder();
+}
+
+orderList.addEventListener('pointerup', endDrag);
+orderList.addEventListener('pointercancel', endDrag);
+
+// Arrow keys do the same for anyone not using a mouse.
+orderList.addEventListener('keydown', (event) => {
+  const item = event.target.closest('li');
+  if (event.key === 'ArrowUp' && item.previousElementSibling) {
+    orderList.insertBefore(item, item.previousElementSibling);
+  } else if (event.key === 'ArrowDown' && item.nextElementSibling) {
+    orderList.insertBefore(item.nextElementSibling, item);
+  } else {
+    return;
+  }
+  event.preventDefault();
+  item.focus();
+  commitOrder();
+});
 
 $('to').addEventListener('input', schedulePreview);
 $('editor').addEventListener('submit', send);

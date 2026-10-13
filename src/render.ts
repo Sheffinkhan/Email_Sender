@@ -1,7 +1,31 @@
 import type { Recipient } from './recipients.js';
 
+/** The parts of an email, in their default top-to-bottom order. */
+export const SECTIONS = [
+  'logo',
+  'banner',
+  'heading',
+  'intro',
+  'media',
+  'button',
+  'details',
+  'panel',
+  'footer',
+] as const;
+
+export type SectionId = (typeof SECTIONS)[number];
+
+/** Keeps known sections in the given order and appends any that are missing. */
+export function normaliseOrder(input: unknown): SectionId[] {
+  const given = Array.isArray(input)
+    ? input.filter((id): id is SectionId => (SECTIONS as readonly unknown[]).includes(id))
+    : [];
+  return [...new Set([...given, ...SECTIONS])];
+}
+
 export interface Template {
   id: string;
+  order: SectionId[];
   name: string;
   brandName: string;
   logoUrl: string;
@@ -9,6 +33,9 @@ export interface Template {
   accentColor: string;
   heading: string;
   intro: string;
+  mediaUrl: string;
+  videoUrl: string;
+  videoLabel: string;
   buttonLabel: string;
   buttonUrl: string;
   details: string;
@@ -19,6 +46,7 @@ export interface Template {
 
 const DEFAULT_ACCENT = '#2563eb';
 const NAME_FALLBACK = 'there';
+const VIDEO_LABEL_FALLBACK = 'Watch the video';
 const TEXT_COLOR = '#1f2937';
 const FONT = 'Arial,Helvetica,sans-serif';
 
@@ -43,6 +71,22 @@ export function safeImage(url: string): string {
   const value = url.trim();
   if (/^https?:\/\//i.test(value)) return value;
   return /^data:image\/(png|jpeg|gif|webp);base64,[a-z0-9+/=]+$/i.test(value) ? value : '';
+}
+
+/** Returns the preview picture YouTube hosts for a video link, or '' for other links. */
+export function youtubeThumbnail(url: string): string {
+  try {
+    const { hostname, pathname, searchParams } = new URL(url);
+    const host = hostname.replace(/^(www|m)\./, '');
+    let id = '';
+    if (host === 'youtu.be') id = pathname.slice(1);
+    else if (host === 'youtube.com') {
+      id = searchParams.get('v') ?? /^\/(shorts|embed|live)\/([^/]+)/.exec(pathname)?.[2] ?? '';
+    }
+    return /^[\w-]{11}$/.test(id) ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '';
+  } catch {
+    return '';
+  }
 }
 
 export function safeColor(color: string): string {
@@ -110,86 +154,92 @@ export function renderEmail(template: Template, recipient: Recipient): string {
   const banner = safeImage(template.bannerUrl);
   const buttonUrl = safeLink(template.buttonUrl);
   const heading = fill(template.heading).trim();
-  const rows: string[] = [];
+  const sections: Partial<Record<SectionId, string>> = {};
 
   if (logo) {
-    rows.push(
-      row(
-        'padding:28px 32px 20px;',
-        `<img src="${escapeHtml(logo)}" alt="${brand}" style="max-height:48px;max-width:240px;border:0;">`,
-        'align="center"',
-      ),
+    sections.logo = row(
+      'padding:28px 32px 20px;',
+      `<img src="${escapeHtml(logo)}" alt="${brand}" style="max-height:48px;max-width:240px;border:0;">`,
+      'align="center"',
     );
   } else if (brand) {
-    rows.push(
-      row(
-        'padding:28px 32px 20px;font-size:26px;font-weight:bold;color:#111827;',
-        brand,
-        'align="center"',
-      ),
+    sections.logo = row(
+      'padding:28px 32px 20px;font-size:26px;font-weight:bold;color:#111827;',
+      brand,
+      'align="center"',
     );
   }
 
   if (banner) {
-    rows.push(
-      row(
-        'padding:0;',
-        `<img src="${escapeHtml(banner)}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;">`,
-      ),
+    sections.banner = row(
+      'padding:0;',
+      `<img src="${escapeHtml(banner)}" alt="" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0;">`,
     );
   }
 
   if (heading) {
-    rows.push(
-      row(
-        `padding:32px 32px 12px;font-size:18px;line-height:26px;font-weight:bold;color:${TEXT_COLOR};`,
-        inline(heading, bodyLink),
-      ),
+    sections.heading = row(
+      `padding:32px 32px 4px;font-size:18px;line-height:26px;font-weight:bold;color:${TEXT_COLOR};`,
+      inline(heading, bodyLink),
     );
   }
 
   if (template.intro.trim()) {
-    rows.push(row('padding:8px 32px 0;', blocks(fill(template.intro), TEXT_COLOR, bodyLink)));
+    sections.intro = row('padding:16px 32px 0;', blocks(fill(template.intro), TEXT_COLOR, bodyLink));
+  }
+
+  // Mail clients do not play video, so a video is a linked picture plus a text link.
+  const video = /^https?:\/\//i.test(template.videoUrl.trim()) ? escapeHtml(template.videoUrl.trim()) : '';
+  const media = safeImage(template.mediaUrl) || youtubeThumbnail(template.videoUrl.trim());
+  if (media || video) {
+    const label = escapeHtml(fill(template.videoLabel).trim() || VIDEO_LABEL_FALLBACK);
+    const picture = media
+      ? `<img src="${escapeHtml(media)}" alt="${video ? label : ''}" width="536" style="display:block;width:100%;max-width:536px;height:auto;border:0;">`
+      : '';
+    const caption = video
+      ? `<p style="margin:${media ? 12 : 0}px 0 0;font-size:14px;line-height:22px;font-weight:bold;"><a href="${video}" style="${bodyLink}">&#9654; ${label}</a></p>`
+      : '';
+    sections.media = row(
+      'padding:12px 32px 20px;',
+      (video && picture ? `<a href="${video}">${picture}</a>` : picture) + caption,
+      'align="center"',
+    );
   }
 
   if (buttonUrl && template.buttonLabel.trim()) {
-    rows.push(
-      row(
-        'padding:12px 32px 28px;',
-        `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${accent}" style="border-radius:4px;">` +
-          `<a href="${escapeHtml(buttonUrl)}" style="display:inline-block;padding:12px 32px;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none;">${escapeHtml(fill(template.buttonLabel).trim())}</a>` +
-          '</td></tr></table>',
-        'align="center"',
-      ),
+    sections.button = row(
+      'padding:12px 32px 20px;',
+      `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="${accent}" style="border-radius:4px;">` +
+        `<a href="${escapeHtml(buttonUrl)}" style="display:inline-block;padding:12px 32px;font-size:14px;font-weight:bold;color:#ffffff;text-decoration:none;">${escapeHtml(fill(template.buttonLabel).trim())}</a>` +
+        '</td></tr></table>',
+      'align="center"',
     );
   }
 
   if (template.details.trim()) {
-    rows.push(row('padding:0 32px 16px;', blocks(fill(template.details), TEXT_COLOR, bodyLink)));
+    sections.details = row('padding:16px 32px 8px;', blocks(fill(template.details), TEXT_COLOR, bodyLink));
   }
 
   if (template.panelTitle.trim() || template.panelText.trim()) {
     const title = template.panelTitle.trim()
       ? `<p style="margin:0 0 12px;font-size:16px;line-height:22px;font-weight:bold;color:#ffffff;">${inline(fill(template.panelTitle).trim(), lightLink)}</p>`
       : '';
-    rows.push(
-      row(
-        'padding:28px 32px 12px;',
-        title + blocks(fill(template.panelText), '#ffffff', lightLink, 13),
-        `bgcolor="${accent}"`,
-      ),
+    sections.panel = row(
+      'padding:28px 32px 12px;',
+      title + blocks(fill(template.panelText), '#ffffff', lightLink, 13),
+      `bgcolor="${accent}"`,
     );
   }
 
   if (template.footer.trim()) {
-    rows.push(
-      row(
-        'padding:24px 32px;',
-        blocks(fill(template.footer), '#6b7280', 'color:#6b7280;text-decoration:underline;', 11),
-        'align="center"',
-      ),
+    sections.footer = row(
+      'padding:24px 32px;',
+      blocks(fill(template.footer), '#6b7280', 'color:#6b7280;text-decoration:underline;', 11),
+      'align="center"',
     );
   }
+
+  const rows = template.order.map((id) => sections[id]).filter(Boolean);
 
   return `<!DOCTYPE html>
 <html lang="en">

@@ -56,6 +56,16 @@ Priya Nair <priya@client.com>, ben@client.com
 
 Logo and banner can be a web address or an uploaded file (up to 1 MB). Uploaded images are attached inside the email, so they show without hosting.
 
+### Rearranging the email
+
+The **Layout** list shows the parts of the email from top to bottom. Drag a part with the mouse (or a finger on a touch screen) to move it. The preview and the form follow, and the order is saved with the template. With the keyboard, select a part and press the up or down arrow.
+
+### GIF and video
+
+- **GIF:** put it in **GIF or picture** (link or upload, up to 2 MB). It appears under the opening text and animates in Outlook on the web, new Outlook, Gmail and Apple Mail. Older Outlook desktop versions show only the first frame, so make the first frame meaningful.
+- **Video:** email programs do not play video inside a message. Paste the video's address into **Video link**. The picture becomes clickable and a "Watch the video" link is added under it. A YouTube link gets its preview picture automatically. For other videos, add your own picture or GIF.
+- All uploads together must stay under about 2.5 MB per email. For a larger GIF, host it online and paste its link.
+
 Templates are stored as JSON files in `templates/`.
 
 ## Good to know
