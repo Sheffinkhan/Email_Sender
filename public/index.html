@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email Sender</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Email Sender</h1>
+    <div class="account">
+      <span id="accountLabel">Checking connection…</span>
+      <button id="showSetup" type="button" class="button quiet" hidden>Connection</button>
+    </div>
+  </header>
+
+  <p id="notice" class="notice" role="status" hidden></p>
+
+  <section id="setup" class="card setup" hidden>
+    <h2>Connect your email account</h2>
+    <p>Enter the same email address and password you use to read this mailbox. Emails are sent from it. The details stay on this PC.</p>
+    <form id="setupForm">
+      <div class="grid two">
+        <label>Email address
+          <input id="smtpUser" type="email" required placeholder="you@yourdomain.com" autocomplete="off">
+        </label>
+        <label>Password
+          <input id="smtpPassword" type="password" autocomplete="new-password">
+        </label>
+        <label>Your name <span class="muted">(shown to clients as the sender)</span>
+          <input id="fromName" maxlength="80" placeholder="Your Company">
+        </label>
+        <label>Email provider
+          <select id="provider">
+            <option value="smtpout.secureserver.net">GoDaddy Workspace Email</option>
+            <option value="smtp.titan.email">Titan (GoDaddy Professional Email)</option>
+            <option value="">Other</option>
+          </select>
+        </label>
+        <label>Sending server
+          <input id="smtpHost" required autocomplete="off">
+        </label>
+        <label>Port
+          <select id="smtpPort">
+            <option value="465">465 (SSL)</option>
+            <option value="587">587 (STARTTLS)</option>
+          </select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="saveSetup" class="button" type="submit">Save and test</button>
+        <button id="disconnect" class="button quiet danger" type="button" hidden>Disconnect</button>
+        <span id="setupStatus" class="muted"></span>
+      </div>
+    </form>
+  </section>
+
+  <main class="layout">
+    <form id="editor" class="column" novalidate>
+      <section class="card">
+        <h2>Send</h2>
+        <label>To
+          <textarea id="to" rows="3" placeholder="anna@client.com, Ben Roy &lt;ben@client.com&gt;"></textarea>
+          <small>Separate addresses with commas or new lines. Each person gets their own separate email. Write <code>Name &lt;email&gt;</code> to fill <code>{{name}}</code>.</small>
+        </label>
+        <label>Subject
+          <input id="subject" maxlength="200" placeholder="Welcome to Your Company">
+        </label>
+        <div class="actions">
+          <button id="send" class="button" type="submit">Send</button>
+          <span id="sendStatus" class="muted"></span>
+        </div>
+        <ul id="results" class="results"></ul>
+      </section>
+
+      <section class="card">
+        <h2>Template</h2>
+        <div class="grid two">
+          <label>Saved templates
+            <select id="templatePicker"></select>
+          </label>
+          <label>Template name
+            <input data-field="name" maxlength="80">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="save" class="button" type="button">Save</button>
+          <button id="saveAs" class="button quiet" type="button">Save as new</button>
+          <button id="remove" class="button quiet danger" type="button">Delete</button>
+          <span id="saveStatus" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Layout <span class="muted">drag a part up or down to rearrange the email</span></h2>
+        <ol id="order" class="order"></ol>
+      </section>
+
+      <section class="card">
+        <h2>Content</h2>
+        <p class="muted">Leave a field empty to hide that part. In text fields use <code>**bold**</code>, <code>[link text](https://…)</code>, <code>## Heading</code>, and a blank line for a new paragraph. <code>{{name}}</code> becomes the client's name.</p>
+
+        <label class="narrow">Accent colour <span class="muted">(button, links, coloured box)</span>
+          <input data-field="accentColor" type="color">
+        </label>
+
+        <!-- Groups are re-ordered by app.js to match the Layout list. -->
+        <div id="fieldGroups">
+          <div class="group" data-section-fields="logo">
+            <h3>Logo / company name</h3>
+            <label>Company name
+              <input data-field="brandName" maxlength="80">
+            </label>
+            <div class="image-field" data-image="logoUrl">
+              <label>Logo image <span class="muted">(replaces the company name)</span>
+                <input data-field="logoUrl" type="url" placeholder="https://… or upload">
+              </label>
+              <label class="button quiet file">Upload<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></label>
+              <button type="button" class="button quiet" data-clear>Remove</button>
+            </div>
+          </div>
+
+          <div class="group" data-section-fields="banner">
+            <div class="image-field" data-image="bannerUrl">
+              <label>Banner image <span class="muted">(600px wide works best)</span>
+                <input data-field="bannerUrl" type="url" placeholder="https://… or upload">
+              </label>
+              <label class="button quiet file">Upload<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden></label>
+              <button type="button" class="button quiet" data-clear>Remove</button>
+            </div>
+          </div>
+
+          <div class="group" data-section-fields="heading">
+            <label>Greeting
+              <input data-field="heading" maxlength="200">
+            </label>
+          </div>
+
+          <div class="group" data-section-fields="intro">
+            <label>Opening text
+              <textarea data-field="intro" rows="5"></textarea>
+            </label>
+          </div>
+
+          <div class="group" data-section-fields="media">
+            <h3>GIF / video</h3>
+            <div class="image-field" data-image="mediaUrl" data-max-mb="2">
+              <label>GIF or picture
+                <input data-field="mediaUrl" type="url" placeholder="https://… or upload">
+              </label>
+              <label class="button quiet file">Upload<input type="file" accept="image/gif,image/png,image/jpeg,image/webp" hidden></label>
+              <button type="button" class="button quiet" data-clear>Remove</button>
+            </div>
+            <div class="grid two">
+              <label>Video link
+                <input data-field="videoUrl" type="url" placeholder="https://youtu.be/…">
+                <small>Email cannot play video. The picture above becomes clickable and opens this link. YouTube links get their picture automatically.</small>
+              </label>
+              <label>Video link text
+                <input data-field="videoLabel" maxlength="80" placeholder="Watch the video">
+              </label>
+            </div>
+          </div>
+
+          <div class="group" data-section-fields="button">
+            <h3>Button</h3>
+            <div class="grid two">
+              <label>Button text
+                <input data-field="buttonLabel" maxlength="60">
+              </label>
+              <label>Button link
+                <input data-field="buttonUrl" type="url" placeholder="https://…">
+              </label>
+            </div>
+          </div>
+
+          <div class="group" data-section-fields="details">
+            <label>Main text
+              <textarea data-field="details" rows="12"></textarea>
+            </label>
+          </div>
+
+          <div class="group" data-section-fields="panel">
+            <h3>Coloured box</h3>
+            <label>Coloured box title
+              <input data-field="panelTitle" maxlength="200">
+            </label>
+            <label>Coloured box text
+              <textarea data-field="panelText" rows="3"></textarea>
+            </label>
+          </div>
+
+          <div class="group" data-section-fields="footer">
+            <label>Footer
+              <textarea data-field="footer" rows="3"></textarea>
+            </label>
+          </div>
+        </div>
+      </section>
+    </form>
+
+    <aside class="column preview">
+      <div class="card">
+        <h2>Preview <span class="muted">as the first person in To will see it</span></h2>
+        <iframe id="preview" title="Email preview" sandbox></iframe>
+      </div>
+    </aside>
+  </main>
+
+  <script src="app.js" type="module"></script>
+</body>
+</html>

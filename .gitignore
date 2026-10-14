@@ -1,0 +1,7 @@
+node_modules/
+coverage/
+dist/
+
+# Local sign-in tokens and connection settings. Never commit.
+.data/
+.env
