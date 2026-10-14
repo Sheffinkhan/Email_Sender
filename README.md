@@ -1,8 +1,8 @@
 # Email_Sender
 
-Send a branded, templated email to clients from your Outlook mailbox. Runs as a small web page on your own PC.
+Send a branded, templated email to clients from your own mailbox. Runs as a small web page on your own PC.
 
-- **From** is the Outlook account you sign in with. A copy of every email lands in its Sent Items.
+- **From** is the mailbox you connect, for example `info@yourdomain.com`, with the sender name you choose.
 - **To** takes one or many addresses. Each person gets their own separate email and cannot see the others.
 - **Subject** is typed per send.
 - **Template** is edited through plain fields with a live preview. Save as many templates as you like.
@@ -21,19 +21,26 @@ npm start
 
 Then open http://localhost:3000.
 
-## Connect Outlook (one time)
+## Connect your email (one time)
 
-Microsoft requires an app registration before any program may send from a mailbox. The page walks you through it the first time:
+The page asks for this the first time:
 
-1. Open [Microsoft Entra > App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) and choose **New registration**.
-2. Name it `Email Sender`. Under supported account types pick **Accounts in any organizational directory and personal Microsoft accounts**.
-3. Under Redirect URI pick **Public client/native (mobile & desktop)** and enter `http://localhost:3000/auth/callback`.
-4. Press **Register** and copy the **Application (client) ID**.
-5. Paste it into the page, press **Save connection**, then **Sign in to Outlook**.
+1. **Email address** and **Password**: the ones you use to read the mailbox.
+2. **Your name**: what clients see as the sender.
+3. **Email provider**: pick yours. This fills in the sending server.
+4. Press **Save and test**. The app logs in to check the details and saves them only if the login works.
 
-The only permission requested is `Mail.Send`. If a company account shows "Need admin approval", your Microsoft 365 admin has to approve the app once.
+| Provider | Sending server | Port |
+| --- | --- | --- |
+| GoDaddy Workspace Email | `smtpout.secureserver.net` | 465 |
+| Titan (GoDaddy Professional Email) | `smtp.titan.email` | 465 |
+| Other | Ask your provider for its SMTP server | 465 or 587 |
 
-Leave Tenant as `common`. Use a tenant ID only if the app was registered for a single organisation.
+Not sure which provider you have? Look up your domain's SPF record: `include:secureserver.net` means GoDaddy Workspace Email, `include:spf.titan.email` means Titan. Sending through the wrong one also makes emails fail spam checks.
+
+If the login is refused: use the mailbox's own password (the one for webmail), not your GoDaddy account password. On Titan, also switch on access from other mail apps in the mailbox settings.
+
+The connection is always encrypted. Ports without encryption are not offered.
 
 ## Writing a template
 
@@ -64,16 +71,16 @@ The **Layout** list shows the parts of the email from top to bottom. Drag a part
 
 - **GIF:** put it in **GIF or picture** (link or upload, up to 2 MB). It appears under the opening text and animates in Outlook on the web, new Outlook, Gmail and Apple Mail. Older Outlook desktop versions show only the first frame, so make the first frame meaningful.
 - **Video:** email programs do not play video inside a message. Paste the video's address into **Video link**. The picture becomes clickable and a "Watch the video" link is added under it. A YouTube link gets its preview picture automatically. For other videos, add your own picture or GIF.
-- All uploads together must stay under about 2.5 MB per email. For a larger GIF, host it online and paste its link.
 
 Templates are stored as JSON files in `templates/`.
 
 ## Good to know
 
-- Outlook limits how many emails an account may send per day (about 300 for personal Outlook.com accounts, far more for Microsoft 365). Large lists may hit it.
-- The sign-in is kept in `.data/` on this PC so you stay signed in between runs. That folder is ignored by git. Treat it like a password and do not share it. **Sign out** in the page removes it.
+- Your provider limits how many emails a mailbox may send per hour and per day. Large lists may hit it; the page shows which addresses failed.
+- A copy may not appear in the mailbox's Sent folder. That depends on the provider.
+- The email address and password are kept in `.data/settings.json` on this PC, unencrypted, so you stay connected between runs. That folder is ignored by git. Do not share it. **Disconnect** in the page deletes it.
 - The page only answers on this PC (`127.0.0.1`).
-- A different port: set `PORT` before `npm start` and register the matching redirect URI.
+- A different port: set `PORT` before `npm start`.
 
 ## Development
 

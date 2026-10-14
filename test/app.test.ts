@@ -5,60 +5,55 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
-import { NotConfiguredError, NotSignedInError, type GraphAuth } from '../src/graph/auth.js';
-import type { OutgoingMail } from '../src/graph/transport.js';
-import { createSettingsStore } from '../src/settings.js';
+import { createSettingsStore, SettingsError, type Settings } from '../src/settings.js';
+import type { OutgoingMail } from '../src/smtp.js';
 import { createTemplateStore } from '../src/templateStore.js';
 
-const CLIENT_ID = '11111111-2222-3333-4444-555555555555';
-const REDIRECT = 'http://localhost:3000/auth/callback';
 const TEMPLATE = { name: 'Welcome', heading: 'Hi {{name}}', brandName: 'Acme' };
+const ACCOUNT: Settings = {
+  host: 'smtp.titan.email',
+  port: 465,
+  user: 'info@acme.test',
+  password: 'not-a-real-password',
+  fromName: 'Acme',
+};
 
 let dir: string;
 let server: Server;
 let base: string;
 let sent: OutgoingMail[];
-let account: string | null;
-let auth: { [K in keyof GraphAuth]: ReturnType<typeof vi.fn> };
+let settings: ReturnType<typeof createSettingsStore>;
+let verify: ReturnType<typeof vi.fn<(settings: Settings) => Promise<void>>>;
 
 async function call(method: string, url: string, body?: unknown, headers: Record<string, string> = {}) {
   const response = await fetch(base + url, {
     method,
-    redirect: 'manual',
     headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...headers },
     body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
   });
   const data = await response.json().catch(() => null);
-  return { status: response.status, data, location: response.headers.get('location') };
+  return { status: response.status, data };
 }
 
 beforeEach(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'email-sender-'));
   await writeFile(path.join(dir, 'index.html'), '<h1>Email Sender</h1>');
   sent = [];
-  account = 'me@outlook.com';
-  auth = {
-    status: vi.fn(async () => ({ configured: true, account })),
-    beginLogin: vi.fn(async () => 'https://login.test/authorize'),
-    completeLogin: vi.fn(async () => {}),
-    logout: vi.fn(async () => {
-      account = null;
-    }),
-    getToken: vi.fn(async () => 'token'),
-  };
+  settings = createSettingsStore(path.join(dir, 'settings.json'));
+  await settings.save(ACCOUNT);
+  verify = vi.fn(async () => {});
 
   const app = createApp({
-    auth: auth as unknown as GraphAuth,
     transport: {
       send: async (mail) => {
         if (mail.to.email.startsWith('bounce')) throw new Error('Mailbox unavailable');
         sent.push(mail);
       },
     },
+    verify,
     templates: createTemplateStore(path.join(dir, 'templates')),
-    settings: createSettingsStore(path.join(dir, 'settings.json')),
+    settings,
     publicDir: dir,
-    redirectUri: REDIRECT,
   });
   server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
@@ -77,9 +72,9 @@ describe('access', () => {
   });
 
   it('refuses requests coming from another website', async () => {
-    const result = await call('POST', '/auth/logout', undefined, { Origin: 'https://evil.test' });
+    const result = await call('DELETE', '/api/settings', undefined, { Origin: 'https://evil.test' });
     expect(result.status).toBe(403);
-    expect(auth.logout).not.toHaveBeenCalled();
+    expect(await settings.load()).toEqual(ACCOUNT);
   });
 
   it('refuses a bad origin header', async () => {
@@ -92,58 +87,58 @@ describe('access', () => {
 });
 
 describe('connection', () => {
-  it('reports status with the redirect URI to register', async () => {
-    expect((await call('GET', '/api/status')).data).toEqual({
-      configured: true,
-      account: 'me@outlook.com',
-      redirectUri: REDIRECT,
-    });
+  const status = { configured: true, account: 'info@acme.test', fromName: 'Acme', host: 'smtp.titan.email', port: 465 };
+
+  it('reports the connected mailbox without the password', async () => {
+    const result = await call('GET', '/api/status');
+    expect(result.data).toEqual(status);
+    expect(JSON.stringify(result.data)).not.toContain(ACCOUNT.password);
   });
 
-  it('saves settings and signs out of the old registration', async () => {
-    const result = await call('PUT', '/api/settings', { clientId: CLIENT_ID });
-    expect(result.status).toBe(200);
-    expect(auth.logout).toHaveBeenCalled();
-    expect(result.data.account).toBeNull();
+  it('tests the login, then saves', async () => {
+    await settings.clear();
+    expect((await call('GET', '/api/status')).data).toEqual({ configured: false, account: null });
+
+    const result = await call('PUT', '/api/settings', ACCOUNT);
+    expect(result.data).toEqual(status);
+    expect(verify).toHaveBeenCalledWith(ACCOUNT);
+    expect(await settings.load()).toEqual(ACCOUNT);
   });
 
-  it('rejects a malformed client id', async () => {
-    const result = await call('PUT', '/api/settings', { clientId: 'nope' });
+  it('saves nothing when the mail server refuses the login', async () => {
+    await settings.clear();
+    verify.mockRejectedValue(new SettingsError('The mail server refused the email address or password.'));
+    const result = await call('PUT', '/api/settings', ACCOUNT);
     expect(result.status).toBe(400);
-    expect(result.data.error).toMatch(/client/i);
+    expect(result.data.error).toMatch(/refused/);
+    expect(await settings.load()).toBeNull();
   });
 
-  it('redirects to Microsoft to sign in', async () => {
-    const result = await call('GET', '/auth/login');
-    expect(result.status).toBe(302);
-    expect(result.location).toBe('https://login.test/authorize');
+  it('keeps the saved password when it is left empty', async () => {
+    const result = await call('PUT', '/api/settings', { ...ACCOUNT, password: '', fromName: 'Acme Ltd' });
+    expect(result.data.fromName).toBe('Acme Ltd');
+    expect((await settings.load())?.password).toBe(ACCOUNT.password);
   });
 
-  it('says so when sign-in is requested before setup', async () => {
-    auth.beginLogin.mockRejectedValue(new NotConfiguredError('Connect Outlook first'));
-    expect((await call('GET', '/auth/login')).status).toBe(409);
+  it('rejects incomplete details before contacting the server', async () => {
+    const result = await call('PUT', '/api/settings', { ...ACCOUNT, port: 25 });
+    expect(result.status).toBe(400);
+    expect(verify).not.toHaveBeenCalled();
   });
 
-  it('completes sign-in on the callback', async () => {
-    const result = await call('GET', '/auth/callback?code=abc&state=xyz');
-    expect(auth.completeLogin).toHaveBeenCalledWith('abc', 'xyz');
-    expect(result.location).toBe('/');
+  it('disconnects', async () => {
+    expect((await call('DELETE', '/api/settings')).data).toEqual({ configured: false, account: null });
+    expect(await settings.load()).toBeNull();
   });
 
-  it('passes sign-in failures back to the page', async () => {
-    auth.completeLogin.mockRejectedValue(new Error('Sign-in session expired. Start again.'));
-    const failed = await call('GET', '/auth/callback?code=abc&state=xyz');
-    expect(failed.location).toBe('/?auth_error=Sign-in%20session%20expired.%20Start%20again.');
-
-    const denied = await call('GET', '/auth/callback?error=access_denied&error_description=User%20cancelled');
-    expect(denied.location).toBe('/?auth_error=User%20cancelled');
-
-    const empty = await call('GET', '/auth/callback');
-    expect(empty.location).toBe('/?auth_error=Sign-in%20was%20cancelled');
-  });
-
-  it('signs out', async () => {
-    expect((await call('POST', '/auth/logout')).data.account).toBeNull();
+  it('hides unexpected errors', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    verify.mockRejectedValue(new Error('secret internal detail'));
+    const result = await call('PUT', '/api/settings', ACCOUNT);
+    expect(result.status).toBe(500);
+    expect(result.data.error).toBe('Something went wrong');
+    expect(log).toHaveBeenCalled();
+    log.mockRestore();
   });
 });
 
@@ -227,32 +222,11 @@ describe('send', () => {
     expect(sent).toEqual([]);
   });
 
-  it('refuses uploads that Outlook would reject for size', async () => {
-    const upload = (bytes: number) => `data:image/gif;base64,${'A'.repeat(bytes)}`;
-    const template = { ...TEMPLATE, bannerUrl: upload(1_400_000), mediaUrl: upload(2_500_000) };
-    const result = await call('POST', '/api/send', request({ template }));
-    expect(result.status).toBe(400);
-    expect(result.data.error).toMatch(/too large together/);
-    expect(sent).toEqual([]);
-
-    const linked = { ...TEMPLATE, bannerUrl: upload(1_400_000), mediaUrl: 'https://acme.test/big.gif' };
-    expect((await call('POST', '/api/send', request({ template: linked }))).status).toBe(200);
-  });
-
-  it('requires a signed-in mailbox', async () => {
-    auth.getToken.mockRejectedValue(new NotSignedInError('Sign in to Outlook first'));
+  it('requires a connected mailbox', async () => {
+    await settings.clear();
     const result = await call('POST', '/api/send', request());
-    expect(result.status).toBe(401);
+    expect(result.status).toBe(409);
+    expect(result.data.error).toMatch(/Connect your email account/);
     expect(sent).toEqual([]);
-  });
-
-  it('hides unexpected errors', async () => {
-    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
-    auth.getToken.mockRejectedValue(new Error('secret internal detail'));
-    const result = await call('POST', '/api/send', request());
-    expect(result.status).toBe(500);
-    expect(result.data.error).toBe('Something went wrong');
-    expect(log).toHaveBeenCalled();
-    log.mockRestore();
   });
 });

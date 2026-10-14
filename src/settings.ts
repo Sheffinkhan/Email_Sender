@@ -1,30 +1,48 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { isEmail } from './recipients.js';
 
 export class SettingsError extends Error {}
+export class NotConfiguredError extends Error {}
 
-/** Connection details of the Microsoft Entra app registration used to sign in. */
+/** The mailbox emails are sent from, and the SMTP server that sends them. */
 export interface Settings {
-  clientId: string;
-  tenant: string;
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  fromName: string;
 }
 
-const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TENANT_ALIAS = /^(common|consumers|organizations)$/i;
-const TENANT_DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+const HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+// Both encrypt the connection. Unencrypted ports are not offered.
+const PORTS = [465, 587];
 
-export function parseSettings(input: unknown): Settings {
+function text(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * Validates untrusted input. An empty password keeps the saved one, but only
+ * for the same mailbox on the same server, so it is never sent anywhere new.
+ */
+export function parseSettings(input: unknown, saved: Settings | null = null): Settings {
   const source = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
-  const clientId = typeof source.clientId === 'string' ? source.clientId.trim() : '';
-  const tenant = typeof source.tenant === 'string' && source.tenant.trim() ? source.tenant.trim() : 'common';
+  const host = text(source.host).toLowerCase();
+  const port = Number(source.port);
+  const user = text(source.user);
+  const fromName = text(source.fromName);
+  let password = typeof source.password === 'string' ? source.password : '';
 
-  if (!GUID.test(clientId)) {
-    throw new SettingsError('Application (client) ID must look like 00000000-0000-0000-0000-000000000000');
-  }
-  if (!TENANT_ALIAS.test(tenant) && !GUID.test(tenant) && !TENANT_DOMAIN.test(tenant)) {
-    throw new SettingsError('Tenant must be common, consumers, organizations, a tenant ID or a domain');
-  }
-  return { clientId: clientId.toLowerCase(), tenant: tenant.toLowerCase() };
+  if (!isEmail(user)) throw new SettingsError('Enter the full email address');
+  if (!HOST.test(host)) throw new SettingsError('Enter the sending server, for example smtp.titan.email');
+  if (!PORTS.includes(port)) throw new SettingsError('Port must be 465 or 587');
+  if (fromName.length > 80) throw new SettingsError('Your name is too long');
+  if (!password && saved && saved.user === user && saved.host === host) password = saved.password;
+  if (!password) throw new SettingsError('Enter the password');
+  if (password.length > 500) throw new SettingsError('Password is too long');
+
+  return { host, port, user, password, fromName };
 }
 
 export function createSettingsStore(file: string) {
@@ -37,11 +55,13 @@ export function createSettingsStore(file: string) {
       }
     },
 
-    async save(input: unknown): Promise<Settings> {
-      const settings = parseSettings(input);
+    async save(settings: Settings): Promise<void> {
       await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, `${JSON.stringify(settings, null, 2)}\n`);
-      return settings;
+      await writeFile(file, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+    },
+
+    async clear(): Promise<void> {
+      await rm(file, { force: true });
     },
   };
 }

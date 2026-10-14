@@ -1,4 +1,4 @@
-import type { MailTransport } from './graph/transport.js';
+import type { MailTransport } from './smtp.js';
 import type { Recipient } from './recipients.js';
 import { renderEmail, renderSubject, type Template } from './render.js';
 

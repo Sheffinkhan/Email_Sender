@@ -21,7 +21,7 @@ const fieldInputs = [...document.querySelectorAll('[data-field]')];
 const orderList = $('order');
 
 let template = { ...BLANK };
-let signedInAs = null;
+let sendingFrom = null;
 let previewTimer;
 
 async function api(method, url, body) {
@@ -96,15 +96,27 @@ async function renderPreview() {
 
 async function loadStatus() {
   const status = await api('GET', '/api/status');
-  signedInAs = status.account;
-  $('redirectUri').textContent = status.redirectUri;
+  sendingFrom = status.account;
   $('setup').hidden = status.configured;
   $('showSetup').hidden = !status.configured;
-  $('signIn').hidden = !status.configured || Boolean(status.account);
-  $('signOut').hidden = !status.account;
-  $('accountLabel').textContent = status.account
-    ? `From: ${status.account}`
-    : status.configured ? 'Not signed in' : 'Outlook not connected';
+  $('disconnect').hidden = !status.configured;
+  $('accountLabel').textContent = status.configured
+    ? `From: ${status.fromName ? `${status.fromName} <${status.account}>` : status.account}`
+    : 'Email not connected';
+
+  $('smtpUser').value = status.account ?? '';
+  $('fromName').value = status.fromName ?? '';
+  $('smtpPassword').value = '';
+  $('smtpPassword').placeholder = status.configured ? 'Leave empty to keep the saved password' : '';
+  $('smtpPort').value = String(status.port ?? 465);
+  setHost(status.host ?? $('provider').options[0].value);
+}
+
+// Keeps the provider list and the server box in step with each other.
+function setHost(host) {
+  const known = [...$('provider').options].some((option) => option.value === host);
+  $('provider').value = known ? host : '';
+  $('smtpHost').value = host;
 }
 
 async function loadTemplates(selectId) {
@@ -139,11 +151,11 @@ async function send(event) {
   const status = $('sendStatus');
   $('results').replaceChildren();
 
-  if (!signedInAs) {
-    status.textContent = 'Sign in to Outlook first.';
+  if (!sendingFrom) {
+    status.textContent = 'Connect your email account first.';
     return;
   }
-  if (!confirm(`Send this email from ${signedInAs} to ${count} recipient(s)?`)) return;
+  if (!confirm(`Send this email from ${sendingFrom} to ${count} recipient(s)?`)) return;
 
   $('send').disabled = true;
   status.textContent = 'Sending…';
@@ -266,24 +278,40 @@ $('showSetup').addEventListener('click', () => {
   $('setup').hidden = !$('setup').hidden;
 });
 
+$('provider').addEventListener('change', (event) => {
+  if (event.target.value) setHost(event.target.value);
+  else $('smtpHost').focus();
+});
+
+$('smtpHost').addEventListener('input', (event) => setHost(event.target.value.trim()));
+
 $('setupForm').addEventListener('submit', async (event) => {
   event.preventDefault();
+  const status = $('setupStatus');
+  $('saveSetup').disabled = true;
+  status.textContent = 'Testing the login…';
   try {
-    await api('PUT', '/api/settings', { clientId: $('clientId').value, tenant: $('tenant').value });
-    showNotice('');
+    await api('PUT', '/api/settings', {
+      user: $('smtpUser').value,
+      password: $('smtpPassword').value,
+      fromName: $('fromName').value,
+      host: $('smtpHost').value,
+      port: Number($('smtpPort').value),
+    });
     await loadStatus();
+    status.textContent = 'Connected.';
   } catch (error) {
-    showNotice(error.message);
+    status.textContent = error.message;
+  } finally {
+    $('saveSetup').disabled = false;
   }
 });
 
-$('signOut').addEventListener('click', async () => {
-  await api('POST', '/auth/logout');
+$('disconnect').addEventListener('click', async () => {
+  if (!confirm(`Disconnect ${sendingFrom}? The saved password is removed from this PC.`)) return;
+  await api('DELETE', '/api/settings');
   await loadStatus();
+  $('setupStatus').textContent = 'Disconnected.';
 });
 
-const authError = new URLSearchParams(location.search).get('auth_error');
-history.replaceState(null, '', location.pathname);
-
 await Promise.all([loadStatus(), loadTemplates()]);
-if (authError) showNotice(`Outlook sign-in failed: ${authError}`);

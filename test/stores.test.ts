@@ -5,7 +5,20 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createSettingsStore, parseSettings, SettingsError } from '../src/settings.js';
 import { createTemplateStore, normaliseTemplate, slugify, TemplateError } from '../src/templateStore.js';
 
-const CLIENT_ID = '11111111-2222-3333-4444-555555555555';
+const INPUT = {
+  host: 'SMTP.Titan.Email',
+  port: '465',
+  user: ' info@acme.test ',
+  password: 'not-a-real-password',
+  fromName: ' Acme ',
+};
+const SAVED = {
+  host: 'smtp.titan.email',
+  port: 465,
+  user: 'info@acme.test',
+  password: 'not-a-real-password',
+  fromName: 'Acme',
+};
 let dir: string;
 
 beforeEach(async () => {
@@ -98,31 +111,53 @@ describe('template store', () => {
 });
 
 describe('settings', () => {
-  it('defaults the tenant to common', () => {
-    expect(parseSettings({ clientId: CLIENT_ID.toUpperCase() })).toEqual({
-      clientId: CLIENT_ID,
-      tenant: 'common',
-    });
+  it('tidies valid input', () => {
+    expect(parseSettings(INPUT)).toEqual(SAVED);
+    expect(parseSettings({ ...INPUT, port: 587, fromName: undefined })).toMatchObject({ port: 587, fromName: '' });
   });
 
-  it('accepts tenant aliases, ids and domains', () => {
-    for (const tenant of ['consumers', 'organizations', CLIENT_ID, 'contoso.onmicrosoft.com']) {
-      expect(parseSettings({ clientId: CLIENT_ID, tenant }).tenant).toBe(tenant);
-    }
+  it.each([
+    ['a missing address', { user: 'info' }, /full email address/],
+    ['a server that is not a host name', { host: 'smtp.titan.email/x' }, /sending server/],
+    ['an unencrypted port', { port: 25 }, /465 or 587/],
+    ['an over-long name', { fromName: 'x'.repeat(81) }, /name is too long/],
+    ['a missing password', { password: '' }, /Enter the password/],
+    ['a non-text password', { password: 12345 }, /Enter the password/],
+    ['an over-long password', { password: 'x'.repeat(501) }, /Password is too long/],
+  ])('rejects %s', (_label, overrides, message) => {
+    expect(() => parseSettings({ ...INPUT, ...overrides })).toThrow(SettingsError);
+    expect(() => parseSettings({ ...INPUT, ...overrides })).toThrow(message);
   });
 
-  it('rejects a bad client id or tenant', () => {
-    expect(() => parseSettings({ clientId: 'abc' })).toThrow(SettingsError);
+  it('rejects input that is not an object', () => {
     expect(() => parseSettings(null)).toThrow(SettingsError);
-    expect(() => parseSettings({ clientId: CLIENT_ID, tenant: 'evil.test/path' })).toThrow(SettingsError);
   });
 
-  it('saves and loads', async () => {
+  it('keeps the saved password when none is typed', () => {
+    const next = parseSettings({ ...INPUT, password: '', fromName: 'Acme Ltd' }, SAVED);
+    expect(next).toEqual({ ...SAVED, fromName: 'Acme Ltd' });
+  });
+
+  it('never reuses the saved password for another mailbox or server', () => {
+    expect(() => parseSettings({ ...INPUT, password: '', user: 'other@acme.test' }, SAVED)).toThrow(
+      /Enter the password/,
+    );
+    expect(() => parseSettings({ ...INPUT, password: '', host: 'smtp.elsewhere.test' }, SAVED)).toThrow(
+      /Enter the password/,
+    );
+  });
+
+  it('saves, loads and clears', async () => {
     const file = path.join(dir, 'nested', 'settings.json');
     const store = createSettingsStore(file);
     expect(await store.load()).toBeNull();
-    await store.save({ clientId: CLIENT_ID, tenant: 'consumers' });
-    expect(await store.load()).toEqual({ clientId: CLIENT_ID, tenant: 'consumers' });
-    expect(JSON.parse(await readFile(file, 'utf8')).tenant).toBe('consumers');
+
+    await store.save(SAVED);
+    expect(await store.load()).toEqual(SAVED);
+    expect(JSON.parse(await readFile(file, 'utf8')).host).toBe('smtp.titan.email');
+
+    await store.clear();
+    expect(await store.load()).toBeNull();
+    await expect(store.clear()).resolves.toBeUndefined();
   });
 });

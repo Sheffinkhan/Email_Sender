@@ -10,9 +10,7 @@
   <header class="topbar">
     <h1>Email Sender</h1>
     <div class="account">
-      <span id="accountLabel">Checking Outlook…</span>
-      <a id="signIn" class="button" href="/auth/login" hidden>Sign in to Outlook</a>
-      <button id="signOut" type="button" class="button quiet" hidden>Sign out</button>
+      <span id="accountLabel">Checking connection…</span>
       <button id="showSetup" type="button" class="button quiet" hidden>Connection</button>
     </div>
   </header>
@@ -20,28 +18,41 @@
   <p id="notice" class="notice" role="status" hidden></p>
 
   <section id="setup" class="card setup" hidden>
-    <h2>Connect your Outlook account</h2>
-    <p>This is a one-time step. Microsoft needs an app registration before any program may send from your mailbox.</p>
-    <ol>
-      <li>Open <a href="https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Microsoft Entra &rsaquo; App registrations</a> and choose <b>New registration</b>.</li>
-      <li>Name it <b>Email Sender</b>. Under supported account types pick <b>Accounts in any organizational directory and personal Microsoft accounts</b>.</li>
-      <li>Under Redirect URI pick <b>Public client/native (mobile &amp; desktop)</b> and enter <code id="redirectUri"></code></li>
-      <li>Press <b>Register</b>, then copy the <b>Application (client) ID</b> into the box below.</li>
-    </ol>
-    <form id="setupForm" class="grid">
-      <label>Application (client) ID
-        <input id="clientId" required placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off">
-      </label>
-      <label>Tenant
-        <input id="tenant" value="common" list="tenants" autocomplete="off">
-        <small>Leave as <code>common</code> unless the app was registered for one organisation only, then paste that tenant ID.</small>
-      </label>
-      <datalist id="tenants">
-        <option value="common"></option>
-        <option value="consumers"></option>
-        <option value="organizations"></option>
-      </datalist>
-      <div><button class="button" type="submit">Save connection</button></div>
+    <h2>Connect your email account</h2>
+    <p>Enter the same email address and password you use to read this mailbox. Emails are sent from it. The details stay on this PC.</p>
+    <form id="setupForm">
+      <div class="grid two">
+        <label>Email address
+          <input id="smtpUser" type="email" required placeholder="you@yourdomain.com" autocomplete="off">
+        </label>
+        <label>Password
+          <input id="smtpPassword" type="password" autocomplete="new-password">
+        </label>
+        <label>Your name <span class="muted">(shown to clients as the sender)</span>
+          <input id="fromName" maxlength="80" placeholder="Your Company">
+        </label>
+        <label>Email provider
+          <select id="provider">
+            <option value="smtpout.secureserver.net">GoDaddy Workspace Email</option>
+            <option value="smtp.titan.email">Titan (GoDaddy Professional Email)</option>
+            <option value="">Other</option>
+          </select>
+        </label>
+        <label>Sending server
+          <input id="smtpHost" required autocomplete="off">
+        </label>
+        <label>Port
+          <select id="smtpPort">
+            <option value="465">465 (SSL)</option>
+            <option value="587">587 (STARTTLS)</option>
+          </select>
+        </label>
+      </div>
+      <div class="actions">
+        <button id="saveSetup" class="button" type="submit">Save and test</button>
+        <button id="disconnect" class="button quiet danger" type="button" hidden>Disconnect</button>
+        <span id="setupStatus" class="muted"></span>
+      </div>
     </form>
   </section>
 

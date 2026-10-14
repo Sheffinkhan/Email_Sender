@@ -1,27 +1,29 @@
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express';
-import { NotConfiguredError, NotSignedInError, type GraphAuth } from './graph/auth.js';
-import type { MailTransport } from './graph/transport.js';
 import { sendToAll } from './mailer.js';
 import { parseRecipients, type Recipient } from './recipients.js';
 import { renderEmail } from './render.js';
-import { SettingsError, type SettingsStore } from './settings.js';
+import {
+  NotConfiguredError,
+  parseSettings,
+  SettingsError,
+  type Settings,
+  type SettingsStore,
+} from './settings.js';
+import type { MailTransport } from './smtp.js';
 import { normaliseTemplate, TemplateError, type TemplateStore } from './templateStore.js';
 
 export interface AppDeps {
-  auth: GraphAuth;
   transport: MailTransport;
+  verify: (settings: Settings) => Promise<void>;
   templates: TemplateStore;
   settings: SettingsStore;
   publicDir: string;
-  redirectUri: string;
 }
 
 class BadRequest extends Error {}
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const PREVIEW_RECIPIENT: Recipient = { email: 'client@example.com', name: 'Alex' };
-// Graph refuses sendMail requests over 4 MB, and uploads travel inside the request.
-const MAX_UPLOAD_CHARS = 3_400_000;
 
 function isLocal(url: string): boolean {
   try {
@@ -45,8 +47,6 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   const type = (error as { type?: string }).type;
   if (error instanceof BadRequest || error instanceof TemplateError || error instanceof SettingsError) {
     res.status(400).json({ error: error.message });
-  } else if (error instanceof NotSignedInError) {
-    res.status(401).json({ error: error.message });
   } else if (error instanceof NotConfiguredError) {
     res.status(409).json({ error: error.message });
   } else if (type === 'entity.too.large') {
@@ -65,46 +65,42 @@ function text(value: unknown, field: string): string {
 }
 
 export function createApp(deps: AppDeps): express.Express {
-  const { auth, transport, templates, settings, publicDir, redirectUri } = deps;
+  const { transport, verify, templates, settings, publicDir } = deps;
   const app = express();
   app.disable('x-powered-by');
   app.use(localOnly);
   app.use(express.json({ limit: '8mb' }));
   app.use(express.static(publicDir));
 
+  // The password never leaves the server once saved.
+  async function status() {
+    const current = await settings.load();
+    return current
+      ? {
+          configured: true,
+          account: current.user,
+          fromName: current.fromName,
+          host: current.host,
+          port: current.port,
+        }
+      : { configured: false, account: null };
+  }
+
   app.get('/api/status', async (_req, res) => {
-    res.json({ ...(await auth.status()), redirectUri });
+    res.json(await status());
   });
 
   app.put('/api/settings', async (req, res) => {
-    // Tokens belong to the previous app registration, so drop them first.
-    await auth.logout();
-    await settings.save(req.body);
-    res.json(await auth.status());
+    const next = parseSettings(req.body, await settings.load());
+    // Nothing is saved until the mail server has accepted the login.
+    await verify(next);
+    await settings.save(next);
+    res.json(await status());
   });
 
-  app.get('/auth/login', async (_req, res) => {
-    res.redirect(await auth.beginLogin());
-  });
-
-  app.get('/auth/callback', async (req, res) => {
-    const { code, state, error_description: description, error } = req.query;
-    let failure = '';
-    if (typeof code === 'string' && typeof state === 'string') {
-      try {
-        await auth.completeLogin(code, state);
-      } catch (cause) {
-        failure = cause instanceof Error ? cause.message : 'Sign-in failed';
-      }
-    } else {
-      failure = String(description ?? error ?? 'Sign-in was cancelled');
-    }
-    res.redirect(failure ? `/?auth_error=${encodeURIComponent(failure)}` : '/');
-  });
-
-  app.post('/auth/logout', async (_req, res) => {
-    await auth.logout();
-    res.json(await auth.status());
+  app.delete('/api/settings', async (_req, res) => {
+    await settings.clear();
+    res.json(await status());
   });
 
   app.get('/api/templates', async (_req, res) => {
@@ -145,18 +141,8 @@ export function createApp(deps: AppDeps): express.Express {
     if (!subject) throw new BadRequest('Subject is required');
     if (invalid.length) throw new BadRequest(`Not a valid email address: ${invalid.join(', ')}`);
     if (!recipients.length) throw new BadRequest('Add at least one To address');
+    if (!(await settings.load())) throw new NotConfiguredError('Connect your email account first');
 
-    const uploads = [template.logoUrl, template.bannerUrl, template.mediaUrl].filter((url) =>
-      url.startsWith('data:'),
-    );
-    if (uploads.join('').length > MAX_UPLOAD_CHARS) {
-      throw new BadRequest(
-        'The uploaded images are too large together (about 2.5 MB at most). Host the GIF online and paste its link instead.',
-      );
-    }
-
-    // Fail before the first send rather than once per recipient.
-    await auth.getToken();
     res.json({ results: await sendToAll(template, subject, recipients, transport) });
   });
 

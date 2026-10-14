@@ -10,6 +10,10 @@ export interface ParsedRecipients {
 
 const EMAIL = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 
+export function isEmail(value: string): boolean {
+  return EMAIL.test(value);
+}
+
 /**
  * Parses a To list. Entries are separated by commas, semicolons or new lines
  * and are either `email` or `Name <email>`. Duplicates are dropped.
