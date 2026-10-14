@@ -1,16 +1,19 @@
 
 {
   "version": 2,
-  "buildCommand": "npx tsc --noEmit",
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "templates/**"
-    }
-  },
-  "rewrites": [
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api"
+      "src": "api/index.ts",
+      "use": "@vercel/node",
+      "config": {
+        "includeFiles": "{public,templates}/**"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.ts"
     }
   ]
 }
