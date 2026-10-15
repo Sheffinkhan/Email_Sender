@@ -1,4 +1,4 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, scryptSync, timingSafeEqual } from 'node:crypto';
 
 const COOKIE = 'es_session';
 const MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
@@ -12,7 +12,8 @@ const digest = (value: string) => createHash('sha256').update(value).digest();
  * everyone out.
  */
 export function createLoginGate(password: string, now: () => number = Date.now) {
-  const key = digest(`email-sender session ${password}`);
+  // A slow derivation, so a stolen session cookie cannot be used to guess the password offline.
+  const key = scryptSync(password, 'email-sender session', 32);
   const sign = (expires: number) => createHmac('sha256', key).update(String(expires)).digest('base64url');
 
   return {

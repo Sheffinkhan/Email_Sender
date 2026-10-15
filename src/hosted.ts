@@ -21,16 +21,25 @@ function notReady(message: string): express.Express {
 
 /**
  * The online (Vercel) version. Everything comes from environment variables:
- * APP_PASSWORD for the login, SMTP_* for the mailbox, and
- * BLOB_READ_WRITE_TOKEN (added when a Blob store is connected) for saving.
+ * SMTP_* for the mailbox, APP_PASSWORD for the login (falls back to the
+ * mailbox password), and BLOB_READ_WRITE_TOKEN (added when a Blob store is
+ * connected) for saving.
  */
 export function createHostedApp(env: Record<string, string | undefined>, root: string): express.Express {
-  const password = env.APP_PASSWORD ?? '';
+  // Without a separate APP_PASSWORD, the mailbox password guards the app. Anyone
+  // who knows it can already send from the mailbox, so nothing new is exposed.
+  const password = env.APP_PASSWORD || env.SMTP_PASSWORD || '';
   if (!password) {
-    return notReady('Not set up yet: add APP_PASSWORD in the Vercel project under Settings, Environment Variables, then redeploy.');
+    return notReady(
+      'Not set up yet: add SMTP_USER and SMTP_PASSWORD in the Vercel project under Settings, Environment Variables, then redeploy.',
+    );
   }
   if (password.length < MIN_PASSWORD_LENGTH) {
-    return notReady(`APP_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters. Change it in Vercel, then redeploy.`);
+    return notReady(
+      env.APP_PASSWORD
+        ? `APP_PASSWORD must be at least ${MIN_PASSWORD_LENGTH} characters. Change it in Vercel, then redeploy.`
+        : `The mailbox password is shorter than ${MIN_PASSWORD_LENGTH} characters, too weak to guard a public website. Add APP_PASSWORD (${MIN_PASSWORD_LENGTH} or more characters) in Vercel, then redeploy.`,
+    );
   }
 
   const bundled = fileBackend(path.join(root, 'templates'));

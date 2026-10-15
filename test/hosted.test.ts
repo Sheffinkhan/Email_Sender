@@ -177,18 +177,45 @@ describe('online app behind a password', () => {
 });
 
 describe('createHostedApp', () => {
-  it('refuses to run without an app password', async () => {
-    await serve(createHostedApp(ENV, dir));
+  const { SMTP_PASSWORD: _mailboxPassword, ...NO_PASSWORDS } = ENV;
+
+  it('refuses to run with no password at all', async () => {
+    await serve(createHostedApp(NO_PASSWORDS, dir));
     const result = await call('GET', '/api/status');
     expect(result.status).toBe(503);
-    expect(result.data).toMatch(/add APP_PASSWORD/);
+    expect(result.data).toMatch(/add SMTP_USER and SMTP_PASSWORD/);
+  });
+
+  it('lets the mailbox password log in when no app password is set', async () => {
+    await serve(createHostedApp(ENV, dir));
+    expect((await call('POST', '/api/login', { password: 'guess' })).status).toBe(401);
+    const result = await call('POST', '/api/login', { password: ENV.SMTP_PASSWORD });
+    expect(result.status).toBe(200);
+    const cookie = (result.headers.get('set-cookie') ?? '').split(';')[0];
+    expect((await call('GET', '/api/status', undefined, { Cookie: cookie })).data).toMatchObject({
+      configured: true,
+      account: 'info@acme.test',
+    });
+  });
+
+  it('accepts only the app password when one is set', async () => {
+    await serve(createHostedApp({ ...ENV, APP_PASSWORD: PASSWORD }, dir));
+    expect((await call('POST', '/api/login', { password: ENV.SMTP_PASSWORD })).status).toBe(401);
+    expect((await call('POST', '/api/login', { password: PASSWORD })).status).toBe(200);
   });
 
   it('refuses a short app password', async () => {
     await serve(createHostedApp({ ...ENV, APP_PASSWORD: 'short' }, dir));
     const result = await call('GET', '/');
     expect(result.status).toBe(503);
-    expect(result.data).toMatch(/at least 12 characters/);
+    expect(result.data).toMatch(/APP_PASSWORD must be at least 12 characters/);
+  });
+
+  it('asks for an app password when the mailbox password is too short to guard the site', async () => {
+    await serve(createHostedApp({ ...ENV, SMTP_PASSWORD: 'short' }, dir));
+    const result = await call('GET', '/');
+    expect(result.status).toBe(503);
+    expect(result.data).toMatch(/mailbox password is shorter than 12 characters/);
   });
 
   it('serves bundled templates read-only without a Blob store', async () => {

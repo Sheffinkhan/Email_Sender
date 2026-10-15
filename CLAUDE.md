@@ -47,7 +47,7 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 - **Preview is rendered server-side** by the same `renderEmail` used for sending, so the two cannot drift.
 - Email HTML is table-based with inline styles for Outlook compatibility. Keep it that way.
 - **Two access modes.** Locally the server binds to `127.0.0.1` and rejects foreign `Host`/`Origin` headers. Online every request needs a login, and requests from other origins are refused. Never serve the app online without the login.
-- **Online fails closed.** Without `APP_PASSWORD` (12+ characters) the hosted app answers only with a setup message.
+- **Online fails closed.** The login password is `APP_PASSWORD`, or `SMTP_PASSWORD` when that is unset (whoever knows the mailbox password can already send from it). If neither is set, or the one in use is under 12 characters, the hosted app answers only with a setup message.
 - **Online settings come from the environment.** Vercel's disk is read-only and ephemeral, so the mailbox is `SMTP_*` variables and templates and uploads live in Vercel Blob. The store is public because images must load in mail apps; template blobs use random suffixes.
 - **Vercel config** is the legacy `builds` setup in `vercel.json`, which routes everything to `api/index.ts`. It was made to work by the owner; change it with care.
 
@@ -55,7 +55,7 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 
 - The password is never returned by the API, never logged, never committed. Nothing under `.data/` leaves the machine.
 - An empty password on save keeps the stored one only for the same mailbox and server.
-- `APP_PASSWORD` and `SMTP_PASSWORD` live only in Vercel environment variables.
+- `APP_PASSWORD` and `SMTP_PASSWORD` live only in Vercel environment variables. Session keys are derived with scrypt so a cookie cannot be brute-forced offline.
 - Tests inject a fake mailer and a fake Blob client. Tests must never log in to a real server or send real mail.
 - Coverage floor: 80% lines.
 
