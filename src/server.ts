@@ -2,7 +2,7 @@ import path from 'node:path';
 import { createApp } from './app.js';
 import { createSettingsStore } from './settings.js';
 import { createSmtpTransport, verifyConnection } from './smtp.js';
-import { createTemplateStore } from './templateStore.js';
+import { createTemplateStore, fileBackend } from './templateStore.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const root = path.resolve(import.meta.dirname, '..');
@@ -11,7 +11,7 @@ const settings = createSettingsStore(path.join(root, '.data', 'settings.json'));
 const app = createApp({
   transport: createSmtpTransport(settings.load),
   verify: verifyConnection,
-  templates: createTemplateStore(path.join(root, 'templates')),
+  templates: createTemplateStore(fileBackend(path.join(root, 'templates'))),
   settings,
   publicDir: path.join(root, 'public'),
 });

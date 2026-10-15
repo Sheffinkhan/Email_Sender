@@ -2,8 +2,33 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createSettingsStore, parseSettings, SettingsError } from '../src/settings.js';
-import { createTemplateStore, normaliseTemplate, slugify, TemplateError } from '../src/templateStore.js';
+import { createSettingsStore, envSettingsStore, parseSettings, SettingsError } from '../src/settings.js';
+import {
+  createTemplateStore,
+  fileBackend,
+  normaliseTemplate,
+  readOnlyBackend,
+  slugify,
+  TemplateError,
+  withSeed,
+  type TemplateBackend,
+} from '../src/templateStore.js';
+
+/** An in-memory backend that counts writes. */
+function memoryBackend(initial: Record<string, string> = {}) {
+  const files = new Map(Object.entries(initial));
+  const writes: string[] = [];
+  const backend: TemplateBackend = {
+    ids: async () => [...files.keys()],
+    read: async (id) => files.get(id),
+    write: async (id, json) => {
+      writes.push(id);
+      files.set(id, json);
+    },
+    remove: async (id) => files.delete(id),
+  };
+  return { backend, files, writes };
+}
 
 const INPUT = {
   host: 'SMTP.Titan.Email',
@@ -55,7 +80,7 @@ describe('slugify', () => {
 
 describe('template store', () => {
   it('saves, lists, reads and removes templates', async () => {
-    const store = createTemplateStore(path.join(dir, 'templates'));
+    const store = createTemplateStore(fileBackend(path.join(dir, 'templates')));
     expect(await store.list()).toEqual([]);
 
     const saved = await store.save({ name: 'Welcome', heading: 'Hi {{name}}' });
@@ -74,21 +99,21 @@ describe('template store', () => {
   });
 
   it('keeps the section order', async () => {
-    const store = createTemplateStore(dir);
+    const store = createTemplateStore(fileBackend(dir));
     expect((await store.save({ name: 'Plain' })).order[0]).toBe('logo');
     await store.save({ name: 'Flipped', order: ['footer', 'heading'] });
     expect((await store.get('flipped'))?.order.slice(0, 3)).toEqual(['footer', 'heading', 'logo']);
   });
 
   it('updates in place when an id is given', async () => {
-    const store = createTemplateStore(dir);
+    const store = createTemplateStore(fileBackend(dir));
     const saved = await store.save({ name: 'Welcome' });
     await store.save({ ...saved, name: 'Welcome v2' });
     expect(await store.list()).toEqual([{ id: 'welcome', name: 'Welcome v2' }]);
   });
 
   it('picks a free id when saving a new template with a used name', async () => {
-    const store = createTemplateStore(dir);
+    const store = createTemplateStore(fileBackend(dir));
     await store.save({ name: 'Welcome' });
     expect((await store.save({ name: 'Welcome' })).id).toBe('welcome-2');
     expect((await store.save({ name: 'Welcome' })).id).toBe('welcome-3');
@@ -96,7 +121,7 @@ describe('template store', () => {
   });
 
   it('skips files that do not parse', async () => {
-    const store = createTemplateStore(dir);
+    const store = createTemplateStore(fileBackend(dir));
     await store.save({ name: 'Welcome' });
     await writeFile(path.join(dir, 'broken.json'), '{ not json');
     expect(await store.list()).toEqual([{ id: 'welcome', name: 'Welcome' }]);
@@ -104,9 +129,56 @@ describe('template store', () => {
   });
 
   it('refuses ids that could leave the templates folder', async () => {
-    const store = createTemplateStore(dir);
+    const store = createTemplateStore(fileBackend(dir));
     await expect(store.get('../package')).rejects.toThrow(TemplateError);
     await expect(store.remove('..\\package')).rejects.toThrow(TemplateError);
+  });
+});
+
+describe('template backends', () => {
+  const welcome = JSON.stringify({ name: 'Welcome' });
+
+  it('serves templates but refuses changes when read-only', async () => {
+    const store = createTemplateStore(readOnlyBackend(memoryBackend({ welcome }).backend, 'Saving needs Blob.'));
+    expect(store.readOnly).toBe(true);
+    expect(await store.list()).toEqual([{ id: 'welcome', name: 'Welcome' }]);
+    await expect(store.save({ name: 'New' })).rejects.toThrow('Saving needs Blob.');
+    await expect(store.remove('welcome')).rejects.toThrow(TemplateError);
+  });
+
+  it('copies bundled templates into an empty store once', async () => {
+    const target = memoryBackend();
+    const seed = memoryBackend({ welcome, ghost: welcome });
+    seed.backend.read = async (id) => (id === 'ghost' ? undefined : welcome);
+    const store = createTemplateStore(withSeed(target.backend, seed.backend));
+
+    expect(store.readOnly).toBe(false);
+    expect(await store.list()).toEqual([{ id: 'welcome', name: 'Welcome' }]);
+    expect((await store.get('welcome'))?.name).toBe('Welcome');
+    await store.save({ name: 'Offer' });
+    expect(await store.remove('offer')).toBe(true);
+    expect(target.writes).toEqual(['welcome', 'offer']);
+  });
+
+  it('leaves a store that already has templates alone', async () => {
+    const target = memoryBackend({ offer: JSON.stringify({ name: 'Offer' }) });
+    const store = createTemplateStore(withSeed(target.backend, memoryBackend({ welcome }).backend));
+    expect(await store.list()).toEqual([{ id: 'offer', name: 'Offer' }]);
+    expect(target.writes).toEqual([]);
+  });
+
+  it('tries seeding again after a failure', async () => {
+    const target = memoryBackend();
+    let fail = true;
+    const ids = target.backend.ids;
+    target.backend.ids = async () => {
+      if (fail) throw new Error('storage offline');
+      return ids();
+    };
+    const store = createTemplateStore(withSeed(target.backend, memoryBackend({ welcome }).backend));
+    await expect(store.list()).rejects.toThrow('storage offline');
+    fail = false;
+    expect(await store.list()).toEqual([{ id: 'welcome', name: 'Welcome' }]);
   });
 });
 
@@ -159,5 +231,30 @@ describe('settings', () => {
     await store.clear();
     expect(await store.load()).toBeNull();
     await expect(store.clear()).resolves.toBeUndefined();
+  });
+});
+
+describe('settings from environment variables', () => {
+  const env = { SMTP_USER: 'info@acme.test', SMTP_PASSWORD: 'not-a-real-password', SMTP_FROM_NAME: 'Acme' };
+
+  it('defaults to GoDaddy on port 465', async () => {
+    const store = envSettingsStore(env);
+    expect(store.managed).toBe(true);
+    expect(await store.load()).toEqual({ ...SAVED, host: 'smtpout.secureserver.net' });
+  });
+
+  it('honours an explicit server and port', async () => {
+    const store = envSettingsStore({ ...env, SMTP_HOST: 'smtp.titan.email', SMTP_PORT: '587' });
+    expect(await store.load()).toMatchObject({ host: 'smtp.titan.email', port: 587 });
+  });
+
+  it('reports nothing set when a variable is missing', async () => {
+    expect(await envSettingsStore({ SMTP_USER: 'info@acme.test' }).load()).toBeNull();
+  });
+
+  it('cannot be changed from the app', async () => {
+    const store = envSettingsStore(env);
+    await expect(store.save(SAVED)).rejects.toThrow(/Vercel/);
+    await expect(store.clear()).rejects.toThrow(SettingsError);
   });
 });

@@ -22,6 +22,7 @@ const orderList = $('order');
 
 let template = { ...BLANK };
 let sendingFrom = null;
+let uploadsHosted = false;
 let previewTimer;
 
 async function api(method, url, body) {
@@ -30,6 +31,11 @@ async function api(method, url, body) {
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
+  // Online, an expired session sends you back to the login page.
+  if (response.status === 401 && url !== '/api/login') {
+    location.href = '/login.html';
+    return new Promise(() => {});
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
@@ -97,9 +103,20 @@ async function renderPreview() {
 async function loadStatus() {
   const status = await api('GET', '/api/status');
   sendingFrom = status.account;
+  uploadsHosted = status.uploads === 'hosted';
   $('setup').hidden = status.configured;
   $('showSetup').hidden = !status.configured;
   $('disconnect').hidden = !status.configured;
+  $('logout').hidden = !status.hosted;
+
+  // Online, the mailbox comes from Vercel settings and cannot be edited here.
+  $('setupForm').hidden = status.managed;
+  $('setupIntro').hidden = status.managed;
+  $('managedNote').hidden = !status.managed;
+  $('managedText').textContent = status.configured
+    ? `Sending from ${status.account} through ${status.host}, port ${status.port}. To change it, edit the SMTP settings in the Vercel project's Environment Variables and redeploy.`
+    : 'No mailbox is set. In the Vercel project, add SMTP_USER and SMTP_PASSWORD under Settings, Environment Variables, then redeploy.';
+  $('testConnection').hidden = !status.configured;
   $('accountLabel').textContent = status.configured
     ? `From: ${status.fromName ? `${status.fromName} <${status.account}>` : status.account}`
     : 'Email not connected';
@@ -198,6 +215,10 @@ for (const box of document.querySelectorAll('.image-field')) {
       showNotice(`That file is over ${maxMb} MB. Use a smaller one, or host it online and paste its link.`);
       return;
     }
+    if (uploadsHosted) {
+      uploadImage(field, chosen);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       template[field] = reader.result;
@@ -212,6 +233,22 @@ for (const box of document.querySelectorAll('.image-field')) {
     fillForm();
     renderPreview();
   });
+}
+
+// Online, images are stored once and the template keeps only their address.
+async function uploadImage(field, file) {
+  showNotice('Uploading…');
+  try {
+    const response = await fetch('/api/uploads', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || `Upload failed (${response.status})`);
+    template[field] = data.url;
+    fillForm();
+    showNotice('');
+    renderPreview();
+  } catch (error) {
+    showNotice(error.message);
+  }
 }
 
 let dragged = null;
@@ -315,3 +352,22 @@ $('disconnect').addEventListener('click', async () => {
 });
 
 await Promise.all([loadStatus(), loadTemplates()]);
+
+$('testConnection').addEventListener('click', async () => {
+  const status = $('managedStatus');
+  $('testConnection').disabled = true;
+  status.textContent = 'Testing the login…';
+  try {
+    await api('POST', '/api/settings/test');
+    status.textContent = 'The mail server accepted the login.';
+  } catch (error) {
+    status.textContent = error.message;
+  } finally {
+    $('testConnection').disabled = false;
+  }
+});
+
+$('logout').addEventListener('click', async () => {
+  await api('POST', '/api/logout');
+  location.href = '/login.html';
+});

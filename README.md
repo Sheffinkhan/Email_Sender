@@ -42,6 +42,37 @@ If the login is refused: use the mailbox's own password (the one for webmail), n
 
 The connection is always encrypted. Ports without encryption are not offered.
 
+## Online version (Vercel)
+
+The same app runs on Vercel, behind a password. Vercel deploys every push to `main` automatically.
+
+### One-time setup in Vercel
+
+Open the project in the Vercel dashboard.
+
+1. **Storage** tab: create a **Blob** store with **public** access and connect it to this project. This adds `BLOB_READ_WRITE_TOKEN` by itself. Public access is needed so uploaded images show in your clients' mail apps; saved templates get random, unguessable addresses.
+2. **Settings > Environment Variables**: add these for Production.
+
+| Variable | Value |
+| --- | --- |
+| `APP_PASSWORD` | The password for the login page. At least 12 characters. |
+| `SMTP_USER` | The mailbox to send from, for example `info@yourdomain.com` |
+| `SMTP_PASSWORD` | That mailbox's password |
+| `SMTP_FROM_NAME` | The sender name clients see (optional) |
+| `SMTP_HOST` | Optional. Defaults to `smtpout.secureserver.net` (GoDaddy Workspace Email) |
+| `SMTP_PORT` | Optional. `465` (default) or `587` |
+
+3. **Deployments**: redeploy the latest deployment so the new variables take effect.
+
+Until `APP_PASSWORD` is set, the site only shows a message saying so. Without a Blob store, templates can be used but not saved.
+
+### Online differences
+
+- The mailbox is changed in Vercel, not in the page. **Connection > Test login** checks it works.
+- Uploaded images are stored in Blob and linked from the email instead of attached. Some mail apps (Outlook especially) ask the reader before showing linked images.
+- Uploads are limited to 2 MB each.
+- The login lasts 7 days. Changing `APP_PASSWORD` signs everyone out.
+
 ## Writing a template
 
 Empty fields are left out of the email. Text fields understand:

@@ -165,3 +165,6 @@ label.narrow { max-width: 360px; }
   .grid.two { grid-template-columns: 1fr; }
   .setup, .notice { margin-left: 16px; margin-right: 16px; }
 }
+
+.login { display: grid; justify-items: center; padding: 48px 16px; }
+.login .card { width: 100%; max-width: 360px; }

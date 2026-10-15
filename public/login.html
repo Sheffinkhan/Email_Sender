@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Email Sender: log in</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Email Sender</h1>
+  </header>
+  <main class="login">
+    <form id="loginForm" class="card">
+      <h2>Log in</h2>
+      <label>Password
+        <input id="password" type="password" required autocomplete="current-password" autofocus>
+      </label>
+      <div class="actions">
+        <button id="submit" class="button" type="submit">Log in</button>
+        <span id="loginStatus" class="muted" role="status"></span>
+      </div>
+    </form>
+  </main>
+  <script src="login.js" type="module"></script>
+</body>
+</html>

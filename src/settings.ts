@@ -45,8 +45,18 @@ export function parseSettings(input: unknown, saved: Settings | null = null): Se
   return { host, port, user, password, fromName };
 }
 
-export function createSettingsStore(file: string) {
+export interface SettingsStore {
+  /** True when the mailbox is set by the host (environment variables), not through the app. */
+  managed: boolean;
+  load(): Promise<Settings | null>;
+  save(settings: Settings): Promise<void>;
+  clear(): Promise<void>;
+}
+
+export function createSettingsStore(file: string): SettingsStore {
   return {
+    managed: false,
+
     async load(): Promise<Settings | null> {
       try {
         return parseSettings(JSON.parse(await readFile(file, 'utf8')));
@@ -66,4 +76,29 @@ export function createSettingsStore(file: string) {
   };
 }
 
-export type SettingsStore = ReturnType<typeof createSettingsStore>;
+const MANAGED = 'Online, the mailbox is set in the Vercel project under Settings, Environment Variables.';
+
+/** Reads the mailbox from SMTP_* environment variables. It cannot be changed from the app. */
+export function envSettingsStore(env: Record<string, string | undefined>): SettingsStore {
+  const refuse = async (): Promise<never> => {
+    throw new SettingsError(MANAGED);
+  };
+  return {
+    managed: true,
+    async load() {
+      try {
+        return parseSettings({
+          host: env.SMTP_HOST || 'smtpout.secureserver.net',
+          port: env.SMTP_PORT || 465,
+          user: env.SMTP_USER,
+          password: env.SMTP_PASSWORD,
+          fromName: env.SMTP_FROM_NAME,
+        });
+      } catch {
+        return null;
+      }
+    },
+    save: refuse,
+    clear: refuse,
+  };
+}

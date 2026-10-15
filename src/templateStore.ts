@@ -67,35 +67,102 @@ function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
-export function createTemplateStore(dir: string) {
-  const fileFor = (id: string) => {
+/** Where template JSON is kept. Ids are validated before they reach a backend. */
+export interface TemplateBackend {
+  ids(): Promise<string[]>;
+  read(id: string): Promise<string | undefined>;
+  write(id: string, json: string): Promise<void>;
+  remove(id: string): Promise<boolean>;
+  readOnly?: boolean;
+}
+
+export function fileBackend(dir: string): TemplateBackend {
+  const fileFor = (id: string) => path.join(dir, `${id}.json`);
+  return {
+    async ids() {
+      try {
+        const files = await readdir(dir);
+        return files.filter((file) => file.endsWith('.json')).map((file) => file.slice(0, -5));
+      } catch (error) {
+        if (isMissing(error)) return [];
+        throw error;
+      }
+    },
+    async read(id) {
+      try {
+        return await readFile(fileFor(id), 'utf8');
+      } catch (error) {
+        if (isMissing(error)) return undefined;
+        throw error;
+      }
+    },
+    async write(id, json) {
+      await mkdir(dir, { recursive: true });
+      await writeFile(fileFor(id), json);
+    },
+    async remove(id) {
+      try {
+        await rm(fileFor(id));
+        return true;
+      } catch (error) {
+        if (isMissing(error)) return false;
+        throw error;
+      }
+    },
+  };
+}
+
+/** Serves templates without saving, for hosts whose disk is read-only. */
+export function readOnlyBackend(source: TemplateBackend, reason: string): TemplateBackend {
+  const refuse = async (): Promise<never> => {
+    throw new TemplateError(reason);
+  };
+  return { ids: source.ids, read: source.read, write: refuse, remove: refuse, readOnly: true };
+}
+
+/** Copies the bundled templates into an empty store the first time it is used. */
+export function withSeed(target: TemplateBackend, seed: TemplateBackend): TemplateBackend {
+  let seeding: Promise<void> | null = null;
+  const ensureSeeded = () =>
+    (seeding ??= (async () => {
+      if ((await target.ids()).length) return;
+      for (const id of await seed.ids()) {
+        const json = await seed.read(id);
+        if (json !== undefined) await target.write(id, json);
+      }
+    })().catch((error: unknown) => {
+      seeding = null;
+      throw error;
+    }));
+
+  return {
+    ids: async () => {
+      await ensureSeeded();
+      return target.ids();
+    },
+    read: async (id) => {
+      await ensureSeeded();
+      return target.read(id);
+    },
+    write: (id, json) => target.write(id, json),
+    remove: (id) => target.remove(id),
+  };
+}
+
+export function createTemplateStore(backend: TemplateBackend) {
+  const checked = (id: string) => {
     if (!ID.test(id)) throw new TemplateError('Template id is invalid');
-    return path.join(dir, `${id}.json`);
+    return id;
   };
 
   async function get(id: string): Promise<Template | undefined> {
-    try {
-      const raw = JSON.parse(await readFile(fileFor(id), 'utf8'));
-      return normaliseTemplate({ ...raw, id });
-    } catch (error) {
-      if (isMissing(error)) return undefined;
-      throw error;
-    }
-  }
-
-  async function ids(): Promise<string[]> {
-    try {
-      const files = await readdir(dir);
-      return files.filter((file) => file.endsWith('.json')).map((file) => file.slice(0, -5));
-    } catch (error) {
-      if (isMissing(error)) return [];
-      throw error;
-    }
+    const json = await backend.read(checked(id));
+    return json === undefined ? undefined : normaliseTemplate({ ...JSON.parse(json), id });
   }
 
   async function newId(name: string): Promise<string> {
     const base = slugify(name) || 'template';
-    const taken = new Set(await ids());
+    const taken = new Set(await backend.ids());
     let id = base;
     for (let n = 2; taken.has(id); n++) id = `${base.slice(0, 58)}-${n}`;
     return id;
@@ -103,10 +170,11 @@ export function createTemplateStore(dir: string) {
 
   return {
     get,
+    readOnly: Boolean(backend.readOnly),
 
     async list(): Promise<{ id: string; name: string }[]> {
       const found: { id: string; name: string }[] = [];
-      for (const id of await ids()) {
+      for (const id of await backend.ids()) {
         // A hand-edited file that no longer parses is skipped, not fatal.
         const template = await get(id).catch(() => undefined);
         if (template) found.push({ id, name: template.name });
@@ -118,19 +186,12 @@ export function createTemplateStore(dir: string) {
     async save(input: unknown): Promise<Template> {
       const template = normaliseTemplate(input);
       if (!template.id) template.id = await newId(template.name);
-      await mkdir(dir, { recursive: true });
-      await writeFile(fileFor(template.id), `${JSON.stringify(template, null, 2)}\n`);
+      await backend.write(template.id, `${JSON.stringify(template, null, 2)}\n`);
       return template;
     },
 
     async remove(id: string): Promise<boolean> {
-      try {
-        await rm(fileFor(id));
-        return true;
-      } catch (error) {
-        if (isMissing(error)) return false;
-        throw error;
-      }
+      return backend.remove(checked(id));
     },
   };
 }

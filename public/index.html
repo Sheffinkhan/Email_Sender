@@ -12,6 +12,7 @@
     <div class="account">
       <span id="accountLabel">Checking connection…</span>
       <button id="showSetup" type="button" class="button quiet" hidden>Connection</button>
+      <button id="logout" type="button" class="button quiet" hidden>Log out</button>
     </div>
   </header>
 
@@ -19,7 +20,14 @@
 
   <section id="setup" class="card setup" hidden>
     <h2>Connect your email account</h2>
-    <p>Enter the same email address and password you use to read this mailbox. Emails are sent from it. The details stay on this PC.</p>
+    <p id="setupIntro">Enter the same email address and password you use to read this mailbox. Emails are sent from it. The details stay on this PC.</p>
+    <div id="managedNote" hidden>
+      <p id="managedText"></p>
+      <div class="actions">
+        <button id="testConnection" class="button" type="button">Test login</button>
+        <span id="managedStatus" class="muted"></span>
+      </div>
+    </div>
     <form id="setupForm">
       <div class="grid two">
         <label>Email address

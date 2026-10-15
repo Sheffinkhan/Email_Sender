@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
 import { createSettingsStore, SettingsError, type Settings } from '../src/settings.js';
 import type { OutgoingMail } from '../src/smtp.js';
-import { createTemplateStore } from '../src/templateStore.js';
+import { createTemplateStore, fileBackend } from '../src/templateStore.js';
 
+const LOCAL_MODE = { hosted: false, managed: false, uploads: 'inline', templatesReadOnly: false };
 const TEMPLATE = { name: 'Welcome', heading: 'Hi {{name}}', brandName: 'Acme' };
 const ACCOUNT: Settings = {
   host: 'smtp.titan.email',
@@ -51,7 +52,7 @@ beforeEach(async () => {
       },
     },
     verify,
-    templates: createTemplateStore(path.join(dir, 'templates')),
+    templates: createTemplateStore(fileBackend(path.join(dir, 'templates'))),
     settings,
     publicDir: dir,
   });
@@ -87,7 +88,7 @@ describe('access', () => {
 });
 
 describe('connection', () => {
-  const status = { configured: true, account: 'info@acme.test', fromName: 'Acme', host: 'smtp.titan.email', port: 465 };
+  const status = { ...LOCAL_MODE, configured: true, account: 'info@acme.test', fromName: 'Acme', host: 'smtp.titan.email', port: 465 };
 
   it('reports the connected mailbox without the password', async () => {
     const result = await call('GET', '/api/status');
@@ -97,7 +98,7 @@ describe('connection', () => {
 
   it('tests the login, then saves', async () => {
     await settings.clear();
-    expect((await call('GET', '/api/status')).data).toEqual({ configured: false, account: null });
+    expect((await call('GET', '/api/status')).data).toEqual({ ...LOCAL_MODE, configured: false, account: null });
 
     const result = await call('PUT', '/api/settings', ACCOUNT);
     expect(result.data).toEqual(status);
@@ -126,8 +127,25 @@ describe('connection', () => {
     expect(verify).not.toHaveBeenCalled();
   });
 
+  it('tests the saved login on request', async () => {
+    expect((await call('POST', '/api/settings/test')).data).toEqual({ ok: true });
+    expect(verify).toHaveBeenCalledWith(ACCOUNT);
+
+    await settings.clear();
+    expect((await call('POST', '/api/settings/test')).status).toBe(409);
+  });
+
+  it('keeps uploads inside the template when there is no image storage', async () => {
+    const result = await call('POST', '/api/uploads', 'GIF89a', { 'Content-Type': 'image/gif' });
+    expect(result.status).toBe(400);
+  });
+
+  it('has no login routes', async () => {
+    expect((await call('POST', '/api/login', { password: 'x' })).status).toBe(404);
+  });
+
   it('disconnects', async () => {
-    expect((await call('DELETE', '/api/settings')).data).toEqual({ configured: false, account: null });
+    expect((await call('DELETE', '/api/settings')).data).toEqual({ ...LOCAL_MODE, configured: false, account: null });
     expect(await settings.load()).toBeNull();
   });
 
