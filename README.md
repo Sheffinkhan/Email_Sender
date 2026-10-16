@@ -60,6 +60,7 @@ Open the project in the Vercel dashboard.
 | `APP_PASSWORD` | Optional. A separate password for the login page, at least 12 characters. Without it, the login page takes the mailbox password. |
 | `SMTP_HOST` | Optional. Defaults to `smtpout.secureserver.net` (GoDaddy Workspace Email) |
 | `SMTP_PORT` | Optional. `465` (default) or `587` |
+| `IMAP_HOST` | Optional. Where Sent copies are filed. Worked out from the sending server (`imap.secureserver.net` for GoDaddy) |
 
 2. **Deployments**: redeploy the latest deployment so the new variables take effect.
 3. Optional, to save templates and upload images online: in the **Storage** tab, create a **Blob** store with **public** access and connect it to this project. This adds `BLOB_READ_WRITE_TOKEN` by itself. Public access is needed so uploaded images show in your clients' mail apps; saved templates get random, unguessable addresses.
@@ -109,7 +110,7 @@ Templates are stored as JSON files in `templates/`.
 ## Good to know
 
 - Your provider limits how many emails a mailbox may send per hour and per day. Large lists may hit it; the page shows which addresses failed.
-- A copy may not appear in the mailbox's Sent folder. That depends on the provider.
+- A copy of every email sent is filed in the mailbox's **Sent** folder (Sent Items), so it shows in GoDaddy webmail and Outlook. The app logs in to the mailbox over IMAP with the same address and password to do this, and only ever adds to Sent. **Save and test** (or **Test login** online) says which folder copies go to. If a copy can't be saved, the email is still delivered and the result list shows a warning.
 - The email address and password are kept in `.data/settings.json` on this PC, unencrypted, so you stay connected between runs. That folder is ignored by git. Do not share it. **Disconnect** in the page deletes it.
 - The page only answers on this PC (`127.0.0.1`).
 - A different port: set `PORT` before `npm start`.

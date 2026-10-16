@@ -16,6 +16,8 @@ import { normaliseTemplate, TemplateError, type TemplateStore } from './template
 export interface AppDeps {
   transport: MailTransport;
   verify: (settings: Settings) => Promise<void>;
+  /** Says whether copies of sent emails can be filed in the Sent folder. */
+  checkSent?: (settings: Settings) => Promise<string>;
   templates: TemplateStore;
   settings: SettingsStore;
   publicDir: string;
@@ -104,7 +106,7 @@ function text(value: unknown, field: string): string {
 }
 
 export function createApp(deps: AppDeps): express.Express {
-  const { transport, verify, templates, settings, publicDir, login, uploadImage } = deps;
+  const { transport, verify, checkSent, templates, settings, publicDir, login, uploadImage } = deps;
   const app = express();
   app.disable('x-powered-by');
   app.use(login ? sameOrigin : localOnly);
@@ -159,14 +161,14 @@ export function createApp(deps: AppDeps): express.Express {
     // Nothing is saved until the mail server has accepted the login.
     await verify(next);
     await settings.save(next);
-    res.json(await status());
+    res.json({ ...(await status()), sentNote: checkSent ? await checkSent(next) : null });
   });
 
   app.post('/api/settings/test', async (_req, res) => {
     const current = await settings.load();
     if (!current) throw new NotConfiguredError('Connect your email account first');
     await verify(current);
-    res.json({ ok: true });
+    res.json({ ok: true, sentNote: checkSent ? await checkSent(current) : null });
   });
 
   app.post(

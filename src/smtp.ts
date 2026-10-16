@@ -1,6 +1,8 @@
 import nodemailer from 'nodemailer';
+import MailComposer from 'nodemailer/lib/mail-composer';
 import { extractInlineImages } from './inlineImages.js';
 import type { Recipient } from './recipients.js';
+import { sentFolderSaver, type ImapFactory, type SaveReport } from './sentFolder.js';
 import { NotConfiguredError, SettingsError, type Settings } from './settings.js';
 
 export interface OutgoingMail {
@@ -9,8 +11,14 @@ export interface OutgoingMail {
   html: string;
 }
 
+/** One batch of sending, sharing a single connection for Sent copies. Always close it. */
+export interface MailSession {
+  send(mail: OutgoingMail): Promise<SaveReport>;
+  close(): Promise<void>;
+}
+
 export interface MailTransport {
-  send(mail: OutgoingMail): Promise<void>;
+  open(): Promise<MailSession>;
 }
 
 /** The part of nodemailer this module uses, so tests can supply a fake. */
@@ -61,33 +69,50 @@ export async function verifyConnection(settings: Settings, factory: MailerFactor
   }
 }
 
+/** Builds the complete message once, so the copy in Sent is exactly what was delivered. */
+export async function composeMessage(settings: Settings, mail: OutgoingMail): Promise<Buffer> {
+  const { html, images } = extractInlineImages(mail.html);
+  return new MailComposer({
+    from: { name: settings.fromName, address: settings.user },
+    to: { name: mail.to.name, address: mail.to.email },
+    subject: mail.subject,
+    html,
+    attachments: images.map((image) => ({
+      filename: `${image.contentId}.${image.contentType.split('/')[1]}`,
+      content: image.contentBytes,
+      encoding: 'base64',
+      contentType: image.contentType,
+      cid: image.contentId,
+    })),
+  })
+    .compile()
+    .build();
+}
+
 export function createSmtpTransport(
   loadSettings: () => Promise<Settings | null>,
   factory: MailerFactory = createMailer,
+  imapFactory?: ImapFactory,
 ): MailTransport {
   return {
-    async send(mail) {
+    async open() {
       const settings = await loadSettings();
       if (!settings) throw new NotConfiguredError('Connect your email account first');
+      const mailer = factory(settings);
+      const sent = sentFolderSaver(settings, imapFactory);
 
-      const { html, images } = extractInlineImages(mail.html);
-      try {
-        await factory(settings).sendMail({
-          from: { name: settings.fromName, address: settings.user },
-          to: { name: mail.to.name, address: mail.to.email },
-          subject: mail.subject,
-          html,
-          attachments: images.map((image) => ({
-            filename: `${image.contentId}.${image.contentType.split('/')[1]}`,
-            content: image.contentBytes,
-            encoding: 'base64',
-            contentType: image.contentType,
-            cid: image.contentId,
-          })),
-        });
-      } catch (error) {
-        throw new Error(describeSmtpError(error));
-      }
+      return {
+        async send(mail) {
+          const raw = await composeMessage(settings, mail);
+          try {
+            await mailer.sendMail({ envelope: { from: settings.user, to: [mail.to.email] }, raw });
+          } catch (error) {
+            throw new Error(describeSmtpError(error));
+          }
+          return sent.save(raw);
+        },
+        close: () => sent.close(),
+      };
     },
   };
 }

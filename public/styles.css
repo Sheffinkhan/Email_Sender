@@ -148,6 +148,7 @@ label.narrow { max-width: 360px; }
 .results li { padding: 4px 0; border-top: 1px solid #e5e7eb; overflow-wrap: anywhere; }
 .results .ok { color: var(--ok); }
 .results .failed { color: var(--danger); }
+.results .warn { color: #b45309; }
 
 #preview {
   display: block;

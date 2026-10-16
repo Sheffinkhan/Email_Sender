@@ -12,6 +12,8 @@ export interface Settings {
   user: string;
   password: string;
   fromName: string;
+  /** Where Sent copies are filed. Worked out from `host` when not given. */
+  imapHost?: string;
 }
 
 const HOST = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
@@ -32,17 +34,19 @@ export function parseSettings(input: unknown, saved: Settings | null = null): Se
   const port = Number(source.port);
   const user = text(source.user);
   const fromName = text(source.fromName);
+  const imapHost = text(source.imapHost).toLowerCase();
   let password = typeof source.password === 'string' ? source.password : '';
 
   if (!isEmail(user)) throw new SettingsError('Enter the full email address');
   if (!HOST.test(host)) throw new SettingsError('Enter the sending server, for example smtp.titan.email');
   if (!PORTS.includes(port)) throw new SettingsError('Port must be 465 or 587');
   if (fromName.length > 80) throw new SettingsError('Your name is too long');
+  if (imapHost && !HOST.test(imapHost)) throw new SettingsError('Enter the receiving (IMAP) server, for example imap.secureserver.net');
   if (!password && saved && saved.user === user && saved.host === host) password = saved.password;
   if (!password) throw new SettingsError('Enter the password');
   if (password.length > 500) throw new SettingsError('Password is too long');
 
-  return { host, port, user, password, fromName };
+  return { host, port, user, password, fromName, ...(imapHost && { imapHost }) };
 }
 
 export interface SettingsStore {
@@ -93,6 +97,7 @@ export function envSettingsStore(env: Record<string, string | undefined>): Setti
           user: env.SMTP_USER,
           password: env.SMTP_PASSWORD,
           fromName: env.SMTP_FROM_NAME,
+          imapHost: env.IMAP_HOST,
         });
       } catch {
         return null;

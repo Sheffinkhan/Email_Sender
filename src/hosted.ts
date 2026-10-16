@@ -4,6 +4,7 @@ import { createApp } from './app.js';
 import { blobImageUploader, blobTemplateBackend } from './blobStorage.js';
 import { createLoginGate } from './login.js';
 import { envSettingsStore } from './settings.js';
+import { describeSentFolder } from './sentFolder.js';
 import { createSmtpTransport, verifyConnection } from './smtp.js';
 import { createTemplateStore, fileBackend, readOnlyBackend, withSeed } from './templateStore.js';
 
@@ -49,6 +50,7 @@ export function createHostedApp(env: Record<string, string | undefined>, root: s
   return createApp({
     transport: createSmtpTransport(settings.load),
     verify: verifyConnection,
+    checkSent: describeSentFolder,
     templates: createTemplateStore(
       blobToken
         ? withSeed(blobTemplateBackend(blobToken), bundled)

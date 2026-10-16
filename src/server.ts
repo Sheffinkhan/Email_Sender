@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createApp } from './app.js';
 import { createSettingsStore } from './settings.js';
+import { describeSentFolder } from './sentFolder.js';
 import { createSmtpTransport, verifyConnection } from './smtp.js';
 import { createTemplateStore, fileBackend } from './templateStore.js';
 
@@ -11,6 +12,7 @@ const settings = createSettingsStore(path.join(root, '.data', 'settings.json'));
 const app = createApp({
   transport: createSmtpTransport(settings.load),
   verify: verifyConnection,
+  checkSent: describeSentFolder,
   templates: createTemplateStore(fileBackend(path.join(root, 'templates'))),
   settings,
   publicDir: path.join(root, 'public'),

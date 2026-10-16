@@ -76,7 +76,15 @@ describe('online app behind a password', () => {
     uploadImage = vi.fn(async () => 'https://store.test/uploads/image-x.gif');
     await serve(
       createApp({
-        transport: { send: async (mail) => void sent.push(mail) },
+        transport: {
+          open: async () => ({
+            send: async (mail) => {
+              sent.push(mail);
+              return { savedToSent: true };
+            },
+            close: async () => {},
+          }),
+        },
         verify: async () => {},
         templates: createTemplateStore(fileBackend(path.join(dir, 'templates'))),
         settings: envSettingsStore(ENV),

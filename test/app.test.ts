@@ -23,6 +23,8 @@ let dir: string;
 let server: Server;
 let base: string;
 let sent: OutgoingMail[];
+let opened = 0;
+let closed = 0;
 let settings: ReturnType<typeof createSettingsStore>;
 let verify: ReturnType<typeof vi.fn<(settings: Settings) => Promise<void>>>;
 
@@ -40,18 +42,32 @@ beforeEach(async () => {
   dir = await mkdtemp(path.join(os.tmpdir(), 'email-sender-'));
   await writeFile(path.join(dir, 'index.html'), '<h1>Email Sender</h1>');
   sent = [];
+  opened = 0;
+  closed = 0;
   settings = createSettingsStore(path.join(dir, 'settings.json'));
   await settings.save(ACCOUNT);
   verify = vi.fn(async () => {});
 
   const app = createApp({
     transport: {
-      send: async (mail) => {
-        if (mail.to.email.startsWith('bounce')) throw new Error('Mailbox unavailable');
-        sent.push(mail);
+      open: async () => {
+        opened++;
+        return {
+          send: async (mail) => {
+            if (mail.to.email.startsWith('bounce')) throw new Error('Mailbox unavailable');
+            sent.push(mail);
+            return mail.to.email.startsWith('nocopy')
+              ? { savedToSent: false, warning: 'Sent, but not copied to the Sent folder: no Sent folder was found in the mailbox' }
+              : { savedToSent: true };
+          },
+          close: async () => {
+            closed++;
+          },
+        };
       },
     },
     verify,
+    checkSent: async () => 'Copies of sent emails will be saved to the "Sent Items" folder.',
     templates: createTemplateStore(fileBackend(path.join(dir, 'templates'))),
     settings,
     publicDir: dir,
@@ -101,7 +117,7 @@ describe('connection', () => {
     expect((await call('GET', '/api/status')).data).toEqual({ ...LOCAL_MODE, configured: false, account: null });
 
     const result = await call('PUT', '/api/settings', ACCOUNT);
-    expect(result.data).toEqual(status);
+    expect(result.data).toEqual({ ...status, sentNote: 'Copies of sent emails will be saved to the "Sent Items" folder.' });
     expect(verify).toHaveBeenCalledWith(ACCOUNT);
     expect(await settings.load()).toEqual(ACCOUNT);
   });
@@ -128,7 +144,10 @@ describe('connection', () => {
   });
 
   it('tests the saved login on request', async () => {
-    expect((await call('POST', '/api/settings/test')).data).toEqual({ ok: true });
+    expect((await call('POST', '/api/settings/test')).data).toEqual({
+      ok: true,
+      sentNote: 'Copies of sent emails will be saved to the "Sent Items" folder.',
+    });
     expect(verify).toHaveBeenCalledWith(ACCOUNT);
 
     await settings.clear();
@@ -217,6 +236,22 @@ describe('send', () => {
       ['ben@client.com', 'Welcome there'],
     ]);
     expect(sent[0].html).toContain('Hi Anna');
+  });
+
+  it('sends the whole batch in one session and closes it', async () => {
+    await call('POST', '/api/send', request());
+    expect([opened, closed]).toEqual([1, 1]);
+  });
+
+  it('reports when a delivered email could not be copied to Sent', async () => {
+    const result = await call('POST', '/api/send', request({ recipients: 'nocopy@client.com' }));
+    expect(result.data.results).toEqual([
+      {
+        email: 'nocopy@client.com',
+        ok: true,
+        warning: 'Sent, but not copied to the Sent folder: no Sent folder was found in the mailbox',
+      },
+    ]);
   });
 
   it('reports per-recipient failures', async () => {

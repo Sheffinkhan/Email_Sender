@@ -183,8 +183,10 @@ async function send(event) {
     $('results').replaceChildren(
       ...results.map((result) => {
         const item = document.createElement('li');
-        item.className = result.ok ? 'ok' : 'failed';
-        item.textContent = result.ok ? `✓ ${result.email}` : `✗ ${result.email}: ${result.error}`;
+        item.className = result.ok ? (result.warning ? 'warn' : 'ok') : 'failed';
+        item.textContent = result.ok
+          ? `✓ ${result.email}${result.warning ? `: ${result.warning}` : ''}`
+          : `✗ ${result.email}: ${result.error}`;
         return item;
       }),
     );
@@ -328,7 +330,7 @@ $('setupForm').addEventListener('submit', async (event) => {
   $('saveSetup').disabled = true;
   status.textContent = 'Testing the login…';
   try {
-    await api('PUT', '/api/settings', {
+    const { sentNote } = await api('PUT', '/api/settings', {
       user: $('smtpUser').value,
       password: $('smtpPassword').value,
       fromName: $('fromName').value,
@@ -336,7 +338,9 @@ $('setupForm').addEventListener('submit', async (event) => {
       port: Number($('smtpPort').value),
     });
     await loadStatus();
-    status.textContent = 'Connected.';
+    // Stay open so the result can be read.
+    $('setup').hidden = false;
+    status.textContent = ['Connected.', sentNote].filter(Boolean).join(' ');
   } catch (error) {
     status.textContent = error.message;
   } finally {
@@ -358,8 +362,8 @@ $('testConnection').addEventListener('click', async () => {
   $('testConnection').disabled = true;
   status.textContent = 'Testing the login…';
   try {
-    await api('POST', '/api/settings/test');
-    status.textContent = 'The mail server accepted the login.';
+    const { sentNote } = await api('POST', '/api/settings/test');
+    status.textContent = ['The mail server accepted the login.', sentNote].filter(Boolean).join(' ');
   } catch (error) {
     status.textContent = error.message;
   } finally {

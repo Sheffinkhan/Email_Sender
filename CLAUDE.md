@@ -32,7 +32,8 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 - `src/recipients.ts` — To list parsing
 - `src/templateStore.ts` — template validation over a pluggable backend (disk, read-only, Blob with seeding)
 - `src/settings.ts` — mailbox settings from a local file or from `SMTP_*` environment variables
-- `src/smtp.ts` — nodemailer transport, login check, error wording
+- `src/smtp.ts` — composes each message once, sends it over SMTP in a per-batch session, login check, error wording
+- `src/sentFolder.ts` — files a copy of each sent message in the mailbox's Sent folder over IMAP (imapflow)
 - `templates/` — saved templates, committed
 - `.data/` — mailbox address and password, never committed
 
@@ -41,6 +42,7 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 - **SMTP with a mailbox password, not Microsoft Graph.** The mailbox is hosted by GoDaddy, not Microsoft, so there is no Graph mailbox to send from. The first version used Graph on the wrong assumption; it is in git history before this change.
 - **Encrypted ports only** (465 implicit TLS, 587 with required STARTTLS).
 - **Login is tested before settings are saved**, so a wrong password is caught at setup, not at send.
+- **Sent copies over IMAP.** SMTP does not save sent mail, so each delivered message is APPENDed (flagged Seen) to the folder the server marks `\Sent`, falling back to common names. The exact bytes sent are the bytes filed. One IMAP connection per send batch. A failed copy is a warning on that result, never a failed send. The IMAP host mirrors the SMTP host (`smtpout.`/`smtp.` → `imap.`) unless `IMAP_HOST` is set.
 - **One email per recipient**, never a shared To line. Clients must not see each other's addresses.
 - **Fixed sections, editable fields and order.** Templates are data, not HTML. Each section is built on its own in `render.ts` and output in `Template.order`, so every section must look right next to any other. A new section needs an entry in `SECTIONS`, its fields in `Template`, and a field group plus label in `public/`.
 - **Video is a linked picture**, never an embedded player. Mail clients strip video.
@@ -53,6 +55,7 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 
 ## Rules
 
+- IMAP is used only to APPEND to Sent and list folders. Never read, move or delete mailbox messages.
 - The password is never returned by the API, never logged, never committed. Nothing under `.data/` leaves the machine.
 - An empty password on save keeps the stored one only for the same mailbox and server.
 - `APP_PASSWORD` and `SMTP_PASSWORD` live only in Vercel environment variables. Session keys are derived with scrypt so a cookie cannot be brute-forced offline.
