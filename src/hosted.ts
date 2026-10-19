@@ -1,7 +1,7 @@
 import path from 'node:path';
 import express from 'express';
 import { createApp } from './app.js';
-import { blobImageUploader, blobTemplateBackend } from './blobStorage.js';
+import { blobImageUploader, blobTemplateBackend, findBlobCredentials } from './blobStorage.js';
 import { createLoginGate } from './login.js';
 import { envSettingsStore } from './settings.js';
 import { describeSentFolder } from './sentFolder.js';
@@ -23,8 +23,8 @@ function notReady(message: string): express.Express {
 /**
  * The online (Vercel) version. Everything comes from environment variables:
  * SMTP_* for the mailbox, APP_PASSWORD for the login (falls back to the
- * mailbox password), and BLOB_READ_WRITE_TOKEN (added when a Blob store is
- * connected) for saving.
+ * mailbox password), and the Blob store connection (BLOB_READ_WRITE_TOKEN or
+ * BLOB_STORE_ID, added when a store is connected) for saving.
  */
 export function createHostedApp(env: Record<string, string | undefined>, root: string): express.Express {
   // Without a separate APP_PASSWORD, the mailbox password guards the app. Anyone
@@ -44,7 +44,7 @@ export function createHostedApp(env: Record<string, string | undefined>, root: s
   }
 
   const bundled = fileBackend(path.join(root, 'templates'));
-  const blobToken = env.BLOB_READ_WRITE_TOKEN;
+  const blob = findBlobCredentials(env);
   const settings = envSettingsStore(env);
 
   return createApp({
@@ -52,13 +52,13 @@ export function createHostedApp(env: Record<string, string | undefined>, root: s
     verify: verifyConnection,
     checkSent: describeSentFolder,
     templates: createTemplateStore(
-      blobToken
-        ? withSeed(blobTemplateBackend(blobToken), bundled)
+      blob
+        ? withSeed(blobTemplateBackend(blob), bundled)
         : readOnlyBackend(bundled, 'Saving online needs a Vercel Blob store connected to this project.'),
     ),
     settings,
     publicDir: path.join(root, 'public'),
     login: createLoginGate(password),
-    uploadImage: blobToken ? blobImageUploader(blobToken) : undefined,
+    uploadImage: blob ? blobImageUploader(blob) : undefined,
   });
 }

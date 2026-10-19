@@ -14,8 +14,26 @@ interface StoredBlob {
   uploadedAt: Date;
 }
 
+/**
+ * How to reach the Blob store. Older connections give a read-write token;
+ * newer ones give only a store id and rely on Vercel's built-in OIDC sign-in,
+ * which the Blob SDK picks up by itself.
+ */
+export type BlobCredentials = { token: string } | { storeId: string };
+
 const TEMPLATES = 'templates/';
 const realClient: BlobClient = { put, list, del };
+
+/** Finds the store connection in the environment, also under a custom variable prefix. */
+export function findBlobCredentials(env: Record<string, string | undefined>): BlobCredentials | null {
+  const entries = Object.entries(env);
+  const token =
+    env.BLOB_READ_WRITE_TOKEN || entries.find(([, value]) => value?.startsWith('vercel_blob_rw_'))?.[1];
+  if (token) return { token };
+  const storeId =
+    env.BLOB_STORE_ID || entries.find(([name, value]) => name.endsWith('STORE_ID') && value?.startsWith('store_'))?.[1];
+  return storeId ? { storeId } : null;
+}
 
 /** Blob failures are almost always setup problems, so say where to look. */
 async function guarded<T>(request: Promise<T>): Promise<T> {
@@ -35,7 +53,7 @@ async function guarded<T>(request: Promise<T>): Promise<T> {
  * part keeps template addresses unguessable. Only the newest copy is kept.
  */
 export function blobTemplateBackend(
-  token: string,
+  credentials: BlobCredentials,
   client: BlobClient = realClient,
   fetchFn: typeof fetch = fetch,
 ): TemplateBackend {
@@ -43,7 +61,7 @@ export function blobTemplateBackend(
     const found: StoredBlob[] = [];
     let cursor: string | undefined;
     do {
-      const page = await guarded(client.list({ prefix, cursor, token }));
+      const page = await guarded(client.list({ prefix, cursor, ...credentials }));
       found.push(...page.blobs);
       cursor = page.hasMore ? page.cursor : undefined;
     } while (cursor);
@@ -73,24 +91,24 @@ export function blobTemplateBackend(
           access: 'public',
           addRandomSuffix: true,
           contentType: 'application/json',
-          token,
+          ...credentials,
         }),
       );
       // Old copies go only once the new one is safely stored.
-      if (older.length) await guarded(client.del(older.map((blob) => blob.url), { token }));
+      if (older.length) await guarded(client.del(older.map((blob) => blob.url), { ...credentials }));
     },
 
     async remove(id) {
       const found = await versions(id);
       if (!found.length) return false;
-      await guarded(client.del(found.map((blob) => blob.url), { token }));
+      await guarded(client.del(found.map((blob) => blob.url), { ...credentials }));
       return true;
     },
   };
 }
 
 /** Stores an uploaded image and returns the public address emails link to. */
-export function blobImageUploader(token: string, client: BlobClient = realClient) {
+export function blobImageUploader(credentials: BlobCredentials, client: BlobClient = realClient) {
   return async (data: Buffer, contentType: string): Promise<string> => {
     const extension = contentType.split('/')[1];
     const { url } = await guarded(
@@ -98,7 +116,7 @@ export function blobImageUploader(token: string, client: BlobClient = realClient
         access: 'public',
         addRandomSuffix: true,
         contentType,
-        token,
+        ...credentials,
       }),
     );
     return url;

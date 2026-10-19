@@ -248,6 +248,13 @@ describe('createHostedApp', () => {
     expect(save.data.error).toMatch(/Blob store/);
   });
 
+  it('uses Blob storage when the store is connected by store id', async () => {
+    await serve(createHostedApp({ ...ENV, APP_PASSWORD: PASSWORD, BLOB_STORE_ID: 'store_4Ncp' }, dir));
+    const cookie = await logIn();
+    const status = await call('GET', '/api/status', undefined, { Cookie: cookie });
+    expect(status.data).toMatchObject({ uploads: 'hosted', templatesReadOnly: false });
+  });
+
   it('uses Blob storage when a token is set', async () => {
     await serve(createHostedApp({ ...ENV, APP_PASSWORD: PASSWORD, BLOB_READ_WRITE_TOKEN: 'vercel_blob_rw_test' }, dir));
     const cookie = await logIn();

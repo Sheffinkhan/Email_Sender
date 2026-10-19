@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { blobImageUploader, blobTemplateBackend, type BlobClient } from '../src/blobStorage.js';
+import { blobImageUploader, blobTemplateBackend, findBlobCredentials, type BlobClient } from '../src/blobStorage.js';
 import { StorageError } from '../src/templateStore.js';
 
 const TOKEN = 'vercel_blob_rw_test';
@@ -37,7 +37,7 @@ function fakeStore() {
     blobs,
     client,
     fetchFn,
-    backend: blobTemplateBackend(TOKEN, client as unknown as BlobClient, fetchFn as unknown as typeof fetch),
+    backend: blobTemplateBackend({ token: TOKEN }, client as unknown as BlobClient, fetchFn as unknown as typeof fetch),
   };
 }
 
@@ -107,10 +107,48 @@ describe('blob template backend', () => {
   });
 });
 
+describe('findBlobCredentials', () => {
+  it('prefers a read-write token', () => {
+    expect(findBlobCredentials({ BLOB_READ_WRITE_TOKEN: 'vercel_blob_rw_abc', BLOB_STORE_ID: 'store_x' })).toEqual({
+      token: 'vercel_blob_rw_abc',
+    });
+  });
+
+  it('finds a token saved under a custom prefix', () => {
+    expect(findBlobCredentials({ EMAILS_READ_WRITE_TOKEN: 'vercel_blob_rw_abc', OTHER: 'x' })).toEqual({
+      token: 'vercel_blob_rw_abc',
+    });
+  });
+
+  it('uses the store id when the store is connected through Vercel sign-in', () => {
+    expect(findBlobCredentials({ BLOB_STORE_ID: 'store_4Ncp' })).toEqual({ storeId: 'store_4Ncp' });
+    expect(findBlobCredentials({ EMAILS_STORE_ID: 'store_4Ncp' })).toEqual({ storeId: 'store_4Ncp' });
+  });
+
+  it('reports no store when nothing is connected', () => {
+    expect(findBlobCredentials({ SMTP_USER: 'info@acme.test', SOME_STORE_ID: 'not-a-store' })).toBeNull();
+  });
+});
+
+describe('blob backend with a store id', () => {
+  it('passes the store id instead of a token', async () => {
+    const { client } = fakeStore();
+    const backend = blobTemplateBackend({ storeId: 'store_4Ncp' }, client as unknown as BlobClient, fetch);
+    await backend.write('welcome', 'v1');
+    expect(client.put).toHaveBeenCalledWith('templates/welcome/template.json', 'v1', {
+      access: 'public',
+      addRandomSuffix: true,
+      contentType: 'application/json',
+      storeId: 'store_4Ncp',
+    });
+    expect(client.list).toHaveBeenCalledWith({ prefix: 'templates/welcome/', cursor: undefined, storeId: 'store_4Ncp' });
+  });
+});
+
 describe('blob image uploader', () => {
   it('stores the image publicly under a random name and returns its address', async () => {
     const { client } = fakeStore();
-    const upload = blobImageUploader(TOKEN, client as unknown as BlobClient);
+    const upload = blobImageUploader({ token: TOKEN }, client as unknown as BlobClient);
     const url = await upload(Buffer.from('GIF89a'), 'image/gif');
     expect(url).toBe('https://store.test/uploads/image-r1.gif');
     expect(client.put).toHaveBeenCalledWith('uploads/image.gif', Buffer.from('GIF89a'), {

@@ -63,7 +63,7 @@ Open the project in the Vercel dashboard.
 | `IMAP_HOST` | Optional. Where Sent copies are filed. Worked out from the sending server (`imap.secureserver.net` for GoDaddy) |
 
 2. **Deployments**: redeploy the latest deployment so the new variables take effect.
-3. Optional, to save templates and upload images online: in the **Storage** tab, create a **Blob** store with **public** access and connect it to this project. This adds `BLOB_READ_WRITE_TOKEN` by itself. Public access is needed so uploaded images show in your clients' mail apps; saved templates get random, unguessable addresses.
+3. Optional, to save templates and upload images online: in the **Storage** tab, create a **Blob** store with **public** access and connect it to this project. Vercel adds the connection settings by itself (`BLOB_READ_WRITE_TOKEN` or `BLOB_STORE_ID`). Public access is needed so uploaded images show in your clients' mail apps; saved templates get random, unguessable addresses.
 
 Until a password is available, the site only shows a message saying what to add. A mailbox password shorter than 12 characters is not accepted as the login; set `APP_PASSWORD` in that case. Without a Blob store you can still edit and send, but changes to templates are not saved. If the store is set up wrongly (for example with Private access), saving shows a message saying what to check.
 
