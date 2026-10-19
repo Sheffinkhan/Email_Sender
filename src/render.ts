@@ -27,6 +27,8 @@ export interface Template {
   id: string;
   order: SectionId[];
   name: string;
+  /** Pre-filled into the Subject box when the template is opened. Not part of the email body. */
+  subject: string;
   brandName: string;
   logoUrl: string;
   bannerUrl: string;

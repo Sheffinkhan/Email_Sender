@@ -1,6 +1,7 @@
 {
   "id": "welcome",
   "name": "Welcome",
+  "subject": "Welcome to Your Company",
   "brandName": "Your Company",
   "logoUrl": "",
   "bannerUrl": "",

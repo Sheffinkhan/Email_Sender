@@ -11,7 +11,7 @@ const SECTION_LABELS = {
 };
 const BLANK = {
   order: Object.keys(SECTION_LABELS),
-  id: '', name: 'New template', brandName: '', logoUrl: '', bannerUrl: '', accentColor: '#2563eb',
+  id: '', name: 'New template', subject: '', brandName: '', logoUrl: '', bannerUrl: '', accentColor: '#2563eb',
   heading: '', intro: '', mediaUrl: '', videoUrl: '', videoLabel: '', buttonLabel: '', buttonUrl: '',
   details: '', panelTitle: '', panelText: '', footer: '',
 };
@@ -23,6 +23,35 @@ const orderList = $('order');
 let template = { ...BLANK };
 let sendingFrom = null;
 let uploadsHosted = false;
+let templatesReadOnly = false;
+// What the open template looked like when it was last loaded or saved.
+let savedSnapshot = '';
+const LAST_TEMPLATE_KEY = 'emailSender.lastTemplate';
+
+function isDirty() {
+  return JSON.stringify(template) !== savedSnapshot;
+}
+
+function showDirty() {
+  if (!templatesReadOnly && isDirty()) $('saveStatus').textContent = 'Unsaved changes';
+}
+
+// Remembered per browser, so coming back opens the same template.
+function rememberTemplate(id) {
+  try {
+    if (id) localStorage.setItem(LAST_TEMPLATE_KEY, id);
+  } catch {
+    // Storage can be blocked; reopening the first template is fine then.
+  }
+}
+
+function lastTemplate() {
+  try {
+    return localStorage.getItem(LAST_TEMPLATE_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 let previewTimer;
 
 async function api(method, url, body) {
@@ -91,6 +120,7 @@ function schedulePreview() {
 }
 
 async function renderPreview() {
+  showDirty();
   try {
     const { html } = await api('POST', '/api/preview', { template, recipients: $('to').value });
     $('preview').srcdoc = html;
@@ -104,6 +134,11 @@ async function loadStatus() {
   const status = await api('GET', '/api/status');
   sendingFrom = status.account;
   uploadsHosted = status.uploads === 'hosted';
+  templatesReadOnly = status.templatesReadOnly;
+  for (const id of ['save', 'saveAs', 'remove']) $(id).disabled = templatesReadOnly;
+  if (templatesReadOnly) {
+    $('saveStatus').textContent = 'Saving is off: connect a Vercel Blob store to this project, then redeploy.';
+  }
   $('setup').hidden = status.configured;
   $('showSetup').hidden = !status.configured;
   $('disconnect').hidden = !status.configured;
@@ -143,17 +178,26 @@ async function loadTemplates(selectId) {
     ...list.map(({ id, name }) => new Option(name, id)),
     new Option('+ New blank template', ''),
   );
-  const id = selectId ?? list[0]?.id ?? '';
+  // '' opens a blank template; an unknown or missing id opens the first one.
+  const known = list.some((item) => item.id === selectId);
+  const id = selectId === '' ? '' : known ? selectId : list[0]?.id ?? '';
   picker.value = id;
   template = id ? await api('GET', `/api/templates/${id}`) : { ...BLANK };
+  savedSnapshot = JSON.stringify(template);
+  rememberTemplate(id);
   fillForm();
   await renderPreview();
 }
 
 async function saveTemplate(asNew) {
   const status = $('saveStatus');
+  let name = template.name;
+  if (asNew) {
+    name = prompt('Name for the new template', `${template.name} copy`)?.trim();
+    if (!name) return;
+  }
   try {
-    const saved = await api('POST', '/api/templates', { ...template, id: asNew ? '' : template.id });
+    const saved = await api('POST', '/api/templates', { ...template, name, id: asNew ? '' : template.id });
     await loadTemplates(saved.id);
     status.textContent = `Saved "${saved.name}"`;
   } catch (error) {
@@ -304,7 +348,18 @@ $('to').addEventListener('input', schedulePreview);
 $('editor').addEventListener('submit', send);
 $('save').addEventListener('click', () => saveTemplate(false));
 $('saveAs').addEventListener('click', () => saveTemplate(true));
-$('templatePicker').addEventListener('change', (event) => loadTemplates(event.target.value));
+$('templatePicker').addEventListener('change', async (event) => {
+  if (isDirty() && !confirm(`Discard your unsaved changes to "${template.name}"?`)) {
+    event.target.value = template.id;
+    return;
+  }
+  await loadTemplates(event.target.value);
+});
+
+// Closing the tab or logging out with unsaved edits asks first.
+window.addEventListener('beforeunload', (event) => {
+  if (!templatesReadOnly && isDirty()) event.preventDefault();
+});
 
 $('remove').addEventListener('click', async () => {
   if (!template.id || !confirm(`Delete the template "${template.name}"?`)) return;
@@ -355,7 +410,7 @@ $('disconnect').addEventListener('click', async () => {
   $('setupStatus').textContent = 'Disconnected.';
 });
 
-await Promise.all([loadStatus(), loadTemplates()]);
+await Promise.all([loadStatus(), loadTemplates(lastTemplate())]);
 
 $('testConnection').addEventListener('click', async () => {
   const status = $('managedStatus');

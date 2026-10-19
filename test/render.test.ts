@@ -22,6 +22,7 @@ function template(overrides: Partial<Template> = {}): Template {
     id: 'welcome',
     order: [...SECTIONS],
     name: 'Welcome',
+    subject: 'Welcome',
     brandName: 'Acme',
     logoUrl: '',
     bannerUrl: '',

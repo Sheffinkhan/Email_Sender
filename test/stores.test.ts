@@ -98,6 +98,13 @@ describe('template store', () => {
     expect(await store.get('welcome')).toBeUndefined();
   });
 
+  it('keeps the subject with the template', async () => {
+    const store = createTemplateStore(fileBackend(dir));
+    await store.save({ name: 'Offer', subject: 'A special offer for {{name}}' });
+    expect((await store.get('offer'))?.subject).toBe('A special offer for {{name}}');
+    expect(() => normaliseTemplate({ name: 'Offer', subject: 'x'.repeat(201) })).toThrow(TemplateError);
+  });
+
   it('keeps the section order', async () => {
     const store = createTemplateStore(fileBackend(dir));
     expect((await store.save({ name: 'Plain' })).order[0]).toBe('logo');

@@ -105,7 +105,14 @@ The **Layout** list shows the parts of the email from top to bottom. Drag a part
 - **GIF:** put it in **GIF or picture** (link or upload, up to 2 MB). It appears under the opening text and animates in Outlook on the web, new Outlook, Gmail and Apple Mail. Older Outlook desktop versions show only the first frame, so make the first frame meaningful.
 - **Video:** email programs do not play video inside a message. Paste the video's address into **Video link**. The picture becomes clickable and a "Watch the video" link is added under it. A YouTube link gets its preview picture automatically. For other videos, add your own picture or GIF.
 
-Templates are stored as JSON files in `templates/`.
+### Saving and reusing templates
+
+- **Save** keeps the open template: its text, images, layout and **Subject**. **Save as new** asks for a name and keeps the original as it was.
+- Next time, the app opens the template you last used in that browser. Pick any other from **Saved templates**.
+- "Unsaved changes" appears next to Save while there are edits to keep. Switching template or closing the tab asks first.
+- To and the recipients are not saved, since they change with every send.
+
+On this PC, templates are stored as JSON files in `templates/`. Online, they are stored in the Vercel Blob store; without one, the Save buttons are switched off.
 
 ## Good to know
 

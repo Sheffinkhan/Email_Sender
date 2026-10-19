@@ -12,6 +12,7 @@ const IMAGE_LIMIT = 1_500_000;
 const MEDIA_LIMIT = 2_800_000;
 const LIMITS: Record<TemplateField, number> = {
   name: 80,
+  subject: 200,
   brandName: 80,
   logoUrl: IMAGE_LIMIT,
   bannerUrl: IMAGE_LIMIT,
