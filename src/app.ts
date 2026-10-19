@@ -11,7 +11,13 @@ import {
   type SettingsStore,
 } from './settings.js';
 import type { MailTransport } from './smtp.js';
-import { normaliseTemplate, TemplateError, type TemplateStore } from './templateStore.js';
+import {
+  normaliseTemplate,
+  StorageError,
+  TEMPLATE_LIMIT,
+  TemplateError,
+  type TemplateStore,
+} from './templateStore.js';
 
 export interface AppDeps {
   transport: MailTransport;
@@ -90,6 +96,8 @@ const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     res.status(400).json({ error: error.message });
   } else if (error instanceof NotConfiguredError) {
     res.status(409).json({ error: error.message });
+  } else if (error instanceof StorageError) {
+    res.status(502).json({ error: error.message });
   } else if (type === 'entity.too.large') {
     res.status(413).json({ error: 'That is too large. Use smaller images.' });
   } else if (type === 'entity.parse.failed') {
@@ -139,6 +147,7 @@ export function createApp(deps: AppDeps): express.Express {
       managed: settings.managed,
       uploads: uploadImage ? 'hosted' : 'inline',
       templatesReadOnly: templates.readOnly,
+      templateLimit: TEMPLATE_LIMIT,
     };
     return current
       ? {

@@ -65,7 +65,7 @@ Open the project in the Vercel dashboard.
 2. **Deployments**: redeploy the latest deployment so the new variables take effect.
 3. Optional, to save templates and upload images online: in the **Storage** tab, create a **Blob** store with **public** access and connect it to this project. This adds `BLOB_READ_WRITE_TOKEN` by itself. Public access is needed so uploaded images show in your clients' mail apps; saved templates get random, unguessable addresses.
 
-Until a password is available, the site only shows a message saying what to add. A mailbox password shorter than 12 characters is not accepted as the login; set `APP_PASSWORD` in that case. Without a Blob store you can still edit and send, but changes to templates are not saved.
+Until a password is available, the site only shows a message saying what to add. A mailbox password shorter than 12 characters is not accepted as the login; set `APP_PASSWORD` in that case. Without a Blob store you can still edit and send, but changes to templates are not saved. If the store is set up wrongly (for example with Private access), saving shows a message saying what to check.
 
 ### Online differences
 
@@ -111,6 +111,7 @@ The **Layout** list shows the parts of the email from top to bottom. Drag a part
 - Next time, the app opens the template you last used in that browser. Pick any other from **Saved templates**.
 - "Unsaved changes" appears next to Save while there are edits to keep. Switching template or closing the tab asks first.
 - To and the recipients are not saved, since they change with every send.
+- Up to **5 templates** can be kept (the count shows next to **Saved templates**). At 5, save over an existing one or delete one before adding another.
 
 On this PC, templates are stored as JSON files in `templates/`. Online, they are stored in the Vercel Blob store; without one, the Save buttons are switched off.
 

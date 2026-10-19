@@ -112,6 +112,15 @@ describe('template store', () => {
     expect((await store.get('flipped'))?.order.slice(0, 3)).toEqual(['footer', 'heading', 'logo']);
   });
 
+  it('refuses a sixth template, including one saved under a new id', async () => {
+    const store = createTemplateStore(fileBackend(dir));
+    for (const name of ['One', 'Two', 'Three', 'Four', 'Five']) await store.save({ name });
+    await expect(store.save({ name: 'Six' })).rejects.toThrow(/up to 5 templates/);
+    await expect(store.save({ id: 'six', name: 'Six' })).rejects.toThrow(TemplateError);
+    expect((await store.save({ id: 'five', name: 'Five again' })).name).toBe('Five again');
+    expect(await store.list()).toHaveLength(5);
+  });
+
   it('updates in place when an id is given', async () => {
     const store = createTemplateStore(fileBackend(dir));
     const saved = await store.save({ name: 'Welcome' });

@@ -10,7 +10,7 @@ import { createHostedApp } from '../src/hosted.js';
 import { createLoginGate } from '../src/login.js';
 import { envSettingsStore } from '../src/settings.js';
 import type { OutgoingMail } from '../src/smtp.js';
-import { createTemplateStore, fileBackend } from '../src/templateStore.js';
+import { createTemplateStore, fileBackend, StorageError } from '../src/templateStore.js';
 
 const PASSWORD = 'correct horse battery';
 const ENV = {
@@ -124,6 +124,7 @@ describe('online app behind a password', () => {
       managed: true,
       uploads: 'hosted',
       templatesReadOnly: false,
+      templateLimit: 5,
       configured: true,
       account: 'info@acme.test',
       fromName: 'Acme',
@@ -174,6 +175,14 @@ describe('online app behind a password', () => {
     const cookie = await logIn();
     expect((await call('POST', '/api/uploads', body, { Cookie: cookie, 'Content-Type': type })).status).toBe(status);
     expect(uploadImage).not.toHaveBeenCalled();
+  });
+
+  it('shows storage setup problems instead of a generic error', async () => {
+    const cookie = await logIn();
+    uploadImage.mockRejectedValueOnce(new StorageError('Online storage refused the request (private store).'));
+    const result = await call('POST', '/api/uploads', 'GIF89a', { Cookie: cookie, 'Content-Type': 'image/gif' });
+    expect(result.status).toBe(502);
+    expect(result.data.error).toBe('Online storage refused the request (private store).');
   });
 
   it('does not let the mailbox be changed from the app', async () => {

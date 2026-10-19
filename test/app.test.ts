@@ -9,7 +9,7 @@ import { createSettingsStore, SettingsError, type Settings } from '../src/settin
 import type { OutgoingMail } from '../src/smtp.js';
 import { createTemplateStore, fileBackend } from '../src/templateStore.js';
 
-const LOCAL_MODE = { hosted: false, managed: false, uploads: 'inline', templatesReadOnly: false };
+const LOCAL_MODE = { hosted: false, managed: false, uploads: 'inline', templatesReadOnly: false, templateLimit: 5 };
 const TEMPLATE = { name: 'Welcome', heading: 'Hi {{name}}', brandName: 'Acme' };
 const ACCOUNT: Settings = {
   host: 'smtp.titan.email',
@@ -188,6 +188,22 @@ describe('templates', () => {
     expect((await call('DELETE', '/api/templates/welcome')).status).toBe(200);
     expect((await call('DELETE', '/api/templates/welcome')).status).toBe(404);
     expect((await call('GET', '/api/templates/welcome')).status).toBe(404);
+  });
+
+  it('keeps at most five templates but always allows saving over one', async () => {
+    for (const name of ['One', 'Two', 'Three', 'Four', 'Five']) {
+      expect((await call('POST', '/api/templates', { name })).status).toBe(200);
+    }
+    const sixth = await call('POST', '/api/templates', { name: 'Six' });
+    expect(sixth.status).toBe(400);
+    expect(sixth.data.error).toMatch(/up to 5 templates/);
+
+    const update = await call('POST', '/api/templates', { id: 'three', name: 'Three', heading: 'Changed' });
+    expect(update.status).toBe(200);
+    expect((await call('GET', '/api/templates/three')).data.heading).toBe('Changed');
+
+    await call('DELETE', '/api/templates/one');
+    expect((await call('POST', '/api/templates', { name: 'Six' })).status).toBe(200);
   });
 
   it('rejects invalid templates and ids', async () => {

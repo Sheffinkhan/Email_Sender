@@ -3,6 +3,8 @@ import path from 'node:path';
 import { normaliseOrder, type Template } from './render.js';
 
 export class TemplateError extends Error {}
+/** The place templates or images are kept refused or failed a request. */
+export class StorageError extends Error {}
 
 type TemplateField = Exclude<keyof Template, 'id' | 'order'>;
 
@@ -31,6 +33,9 @@ const LIMITS: Record<TemplateField, number> = {
 };
 
 const ID = /^[a-z0-9][a-z0-9-]{0,62}$/;
+
+/** How many templates may be kept. Changing an existing one is always allowed. */
+export const TEMPLATE_LIMIT = 5;
 
 export function slugify(name: string): string {
   return name
@@ -186,7 +191,15 @@ export function createTemplateStore(backend: TemplateBackend) {
     /** Saves a template. Without an id a new one is created from the name. */
     async save(input: unknown): Promise<Template> {
       const template = normaliseTemplate(input);
-      if (!template.id) template.id = await newId(template.name);
+      const existing = await backend.ids();
+      if (!template.id || !existing.includes(template.id)) {
+        if (existing.length >= TEMPLATE_LIMIT) {
+          throw new TemplateError(
+            `You can keep up to ${TEMPLATE_LIMIT} templates. Delete one you no longer need, or save over an existing one.`,
+          );
+        }
+        template.id ||= await newId(template.name);
+      }
       await backend.write(template.id, `${JSON.stringify(template, null, 2)}\n`);
       return template;
     },

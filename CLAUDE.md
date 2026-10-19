@@ -45,12 +45,14 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 - **Sent copies over IMAP.** SMTP does not save sent mail, so each delivered message is APPENDed (flagged Seen) to the folder the server marks `\Sent`, falling back to common names. The exact bytes sent are the bytes filed. One IMAP connection per send batch. A failed copy is a warning on that result, never a failed send. The IMAP host mirrors the SMTP host (`smtpout.`/`smtp.` → `imap.`) unless `IMAP_HOST` is set.
 - **One email per recipient**, never a shared To line. Clients must not see each other's addresses.
 - **Fixed sections, editable fields and order.** Templates are data, not HTML. Each section is built on its own in `render.ts` and output in `Template.order`, so every section must look right next to any other. A new section needs an entry in `SECTIONS`, its fields in `Template`, and a field group plus label in `public/`.
+- **At most 5 templates** (`TEMPLATE_LIMIT`), enforced in `templateStore.save` for new ids only, so an existing template can always be saved over. The owner asked for 4 or 5.
 - **Video is a linked picture**, never an embedded player. Mail clients strip video.
 - **Preview is rendered server-side** by the same `renderEmail` used for sending, so the two cannot drift.
 - Email HTML is table-based with inline styles for Outlook compatibility. Keep it that way.
 - **Two access modes.** Locally the server binds to `127.0.0.1` and rejects foreign `Host`/`Origin` headers. Online every request needs a login, and requests from other origins are refused. Never serve the app online without the login.
 - **Online fails closed.** The login password is `APP_PASSWORD`, or `SMTP_PASSWORD` when that is unset (whoever knows the mailbox password can already send from it). If neither is set, or the one in use is under 12 characters, the hosted app answers only with a setup message.
 - **Online settings come from the environment.** Vercel's disk is read-only and ephemeral, so the mailbox is `SMTP_*` variables and templates and uploads live in Vercel Blob. The store is public because images must load in mail apps; template blobs use random suffixes.
+- **Storage failures name the fix.** Blob errors become `StorageError` (HTTP 502) with a message pointing at the Blob store's access and project connection, not a generic 500.
 - **Vercel config** is the legacy `builds` setup in `vercel.json`, which routes everything to `api/index.ts`. It was made to work by the owner; change it with care.
 
 ## Rules

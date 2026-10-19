@@ -24,12 +24,24 @@ let template = { ...BLANK };
 let sendingFrom = null;
 let uploadsHosted = false;
 let templatesReadOnly = false;
+let templateLimit = 5;
+let templateCount = 0;
 // What the open template looked like when it was last loaded or saved.
 let savedSnapshot = '';
 const LAST_TEMPLATE_KEY = 'emailSender.lastTemplate';
 
 function isDirty() {
   return JSON.stringify(template) !== savedSnapshot;
+}
+
+// At the limit, only existing templates can be saved over.
+function updateSaveButtons() {
+  $('save').disabled = templatesReadOnly;
+  $('remove').disabled = templatesReadOnly;
+  $('saveAs').disabled = templatesReadOnly || templateCount >= templateLimit;
+  $('saveAs').title = $('saveAs').disabled && !templatesReadOnly
+    ? `You can keep up to ${templateLimit} templates. Delete one first.`
+    : '';
 }
 
 function showDirty() {
@@ -135,7 +147,8 @@ async function loadStatus() {
   sendingFrom = status.account;
   uploadsHosted = status.uploads === 'hosted';
   templatesReadOnly = status.templatesReadOnly;
-  for (const id of ['save', 'saveAs', 'remove']) $(id).disabled = templatesReadOnly;
+  templateLimit = status.templateLimit ?? templateLimit;
+  updateSaveButtons();
   if (templatesReadOnly) {
     $('saveStatus').textContent = 'Saving is off: connect a Vercel Blob store to this project, then redeploy.';
   }
@@ -174,10 +187,13 @@ function setHost(host) {
 async function loadTemplates(selectId) {
   const list = await api('GET', '/api/templates');
   const picker = $('templatePicker');
-  picker.replaceChildren(
-    ...list.map(({ id, name }) => new Option(name, id)),
-    new Option('+ New blank template', ''),
-  );
+  templateCount = list.length;
+  const atLimit = templateCount >= templateLimit;
+  const blank = new Option(atLimit ? '+ New blank template (delete one first)' : '+ New blank template', '');
+  blank.disabled = atLimit;
+  picker.replaceChildren(...list.map(({ id, name }) => new Option(name, id)), blank);
+  $('templateCount').textContent = `(${templateCount} of ${templateLimit})`;
+  updateSaveButtons();
   // '' opens a blank template; an unknown or missing id opens the first one.
   const known = list.some((item) => item.id === selectId);
   const id = selectId === '' ? '' : known ? selectId : list[0]?.id ?? '';

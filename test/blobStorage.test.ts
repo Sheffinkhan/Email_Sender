@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { blobImageUploader, blobTemplateBackend, type BlobClient } from '../src/blobStorage.js';
+import { StorageError } from '../src/templateStore.js';
 
 const TOKEN = 'vercel_blob_rw_test';
 
@@ -80,11 +81,29 @@ describe('blob template backend', () => {
     expect(await backend.read('welcome')).toBe('short');
   });
 
+  it('explains a refused storage request in terms of the Vercel setup', async () => {
+    const { backend, client } = fakeStore();
+    client.put.mockRejectedValueOnce(new Error('Vercel Blob: Cannot use public access on a private store.'));
+    await expect(backend.write('welcome', 'v1')).rejects.toThrow(StorageError);
+    client.list.mockRejectedValueOnce('offline');
+    await expect(backend.ids()).rejects.toThrow(
+      'Online storage refused the request (offline). In Vercel, check that the Blob store has Public access and is connected to this project, then redeploy.',
+    );
+  });
+
+  it('passes on the reason from the store', async () => {
+    const { backend, client } = fakeStore();
+    client.put.mockRejectedValueOnce(new Error('Vercel Blob: Cannot use public access on a private store.'));
+    await expect(backend.write('welcome', 'v1')).rejects.toThrow(
+      'Online storage refused the request (Cannot use public access on a private store.)',
+    );
+  });
+
   it('reports a template that cannot be read', async () => {
     const { backend, fetchFn } = fakeStore();
     await backend.write('welcome', 'v1');
     fetchFn.mockResolvedValueOnce(new Response('gone', { status: 404 }));
-    await expect(backend.read('welcome')).rejects.toThrow('Could not read template welcome (404)');
+    await expect(backend.read('welcome')).rejects.toThrow('Could not read template welcome from online storage (404)');
   });
 });
 
