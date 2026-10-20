@@ -47,6 +47,7 @@ Web app, run locally or on Vercel, that sends one templated HTML email per recip
 - **Fixed sections, editable fields and order.** Templates are data, not HTML. Each section is built on its own in `render.ts` and output in `Template.order`, so every section must look right next to any other. A new section needs an entry in `SECTIONS`, its fields in `Template`, and a field group plus label in `public/`.
 - **At most 5 templates** (`TEMPLATE_LIMIT`), enforced in `templateStore.save` for new ids only, so an existing template can always be saved over. The owner asked for 4 or 5.
 - **Video is a linked picture**, never an embedded player. Mail clients strip video.
+- **Every email has a plain-text part** (`renderText`, same sections and order as the HTML). HTML-only mail scores worse with spam filters.
 - **Preview is rendered server-side** by the same `renderEmail` used for sending, so the two cannot drift.
 - Email HTML is table-based with inline styles for Outlook compatibility. Keep it that way.
 - **Two access modes.** Locally the server binds to `127.0.0.1` and rejects foreign `Host`/`Origin` headers. Online every request needs a login, and requests from other origins are refused. Never serve the app online without the login.

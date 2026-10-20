@@ -102,6 +102,14 @@ describe('smtp transport', () => {
     expect(raw).toMatch(/^Content-Type: image\/gif; name=image1\.gif\r?$/m);
   });
 
+  it('includes a plain-text version when one is given', async () => {
+    const raw = (await composeMessage(SETTINGS, { ...mail, text: 'Hi Anna, plain.' })).toString();
+    expect(raw).toMatch(/^Content-Type: multipart\/alternative;/m);
+    expect(raw).toMatch(/^Content-Type: text\/plain; charset=utf-8\r?$/m);
+    expect(raw).toContain('Hi Anna, plain.');
+    expect(raw).toMatch(/^Content-Type: text\/html; charset=utf-8\r?$/m);
+  });
+
   it('delivers exactly the message it files in Sent', async () => {
     const { mailer, factory } = fakeMailer();
     const imap = fakeImap();
@@ -168,6 +176,7 @@ describe('sendToAll', () => {
     ]);
     expect(send.mock.calls[0][0]).toMatchObject({ to: recipients[0], subject: 'Hello Anna' });
     expect(send.mock.calls[0][0].html).toContain('Hi Anna');
+    expect(send.mock.calls[0][0].text).toContain('Hi Anna');
     expect(send.mock.calls[1][0]).toMatchObject({ subject: 'Hello there' });
     expect(send.mock.calls[1][0].html).not.toContain('Anna');
     expect(close).toHaveBeenCalledTimes(1);

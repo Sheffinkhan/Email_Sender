@@ -1,6 +1,6 @@
 import type { MailTransport } from './smtp.js';
 import type { Recipient } from './recipients.js';
-import { renderEmail, renderSubject, type Template } from './render.js';
+import { renderEmail, renderSubject, renderText, type Template } from './render.js';
 
 export interface SendResult {
   email: string;
@@ -30,6 +30,7 @@ export async function sendToAll(
           to,
           subject: renderSubject(subject, to),
           html: renderEmail(template, to),
+          text: renderText(template, to),
         });
         results.push({ email: to.email, ok: true, ...(report.warning && { warning: report.warning }) });
       } catch (error) {

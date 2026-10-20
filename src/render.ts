@@ -261,3 +261,46 @@ ${rows.join('\n')}
 </body>
 </html>`;
 }
+
+// [text](url) becomes "text (url)" and **bold** loses its stars; only safe links keep their address.
+function inlineText(text: string): string {
+  return text
+    .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (_match, label: string, url: string) =>
+      safeLink(url) ? `${label} (${url})` : label,
+    )
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1');
+}
+
+function blocksText(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => inlineText(block.startsWith('## ') ? block.slice(3) : block))
+    .join('\n\n');
+}
+
+/**
+ * The plain-text version sent alongside the HTML. Mail apps that do not show
+ * HTML use it, and spam filters distrust messages that have no text part.
+ */
+export function renderText(template: Template, recipient: Recipient): string {
+  const fill = (text: string) => personalise(text, recipient);
+  const video = /^https?:\/\//i.test(template.videoUrl.trim()) ? template.videoUrl.trim() : '';
+  const buttonUrl = safeLink(template.buttonUrl);
+  const sections: Partial<Record<SectionId, string>> = {
+    logo: template.brandName.trim(),
+    heading: inlineText(fill(template.heading).trim()),
+    intro: blocksText(fill(template.intro)),
+    media: video ? `${fill(template.videoLabel).trim() || VIDEO_LABEL_FALLBACK}: ${video}` : '',
+    button: buttonUrl && template.buttonLabel.trim() ? `${fill(template.buttonLabel).trim()}: ${buttonUrl}` : '',
+    details: blocksText(fill(template.details)),
+    panel: [inlineText(fill(template.panelTitle).trim()), blocksText(fill(template.panelText))].filter(Boolean).join('\n\n'),
+    footer: blocksText(fill(template.footer)),
+  };
+  return `${template.order
+    .map((id) => sections[id])
+    .filter(Boolean)
+    .join('\n\n')}\n`;
+}

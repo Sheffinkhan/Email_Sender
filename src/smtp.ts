@@ -9,6 +9,8 @@ export interface OutgoingMail {
   to: Recipient;
   subject: string;
   html: string;
+  /** Plain-text version of the same email. */
+  text?: string;
 }
 
 /** One batch of sending, sharing a single connection for Sent copies. Always close it. */
@@ -77,6 +79,7 @@ export async function composeMessage(settings: Settings, mail: OutgoingMail): Pr
     to: { name: mail.to.name, address: mail.to.email },
     subject: mail.subject,
     html,
+    ...(mail.text && { text: mail.text }),
     attachments: images.map((image) => ({
       filename: `${image.contentId}.${image.contentType.split('/')[1]}`,
       content: image.contentBytes,

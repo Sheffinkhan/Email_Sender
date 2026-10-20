@@ -10,6 +10,7 @@ import {
   safeLink,
   SECTIONS,
   normaliseOrder,
+  renderText,
   youtubeThumbnail,
   type Template,
 } from '../src/render.js';
@@ -238,5 +239,40 @@ describe('extractInlineImages', () => {
   it('leaves hosted images alone', () => {
     const html = '<img src="https://a.test/x.png">';
     expect(extractInlineImages(html)).toEqual({ html, images: [] });
+  });
+});
+
+describe('renderText', () => {
+  it('gives a readable plain version with link addresses spelled out', () => {
+    const text = renderText(template({ videoUrl: 'https://vimeo.com/1', videoLabel: 'Watch {{name}}' }), anna);
+    expect(text).toBe(
+      [
+        'Acme',
+        'Hi Anna',
+        'First paragraph.',
+        'Second paragraph.',
+        'Watch Anna: https://vimeo.com/1',
+        'Log in: https://acme.test/login',
+        'Next steps',
+        'Log in: on desktop (https://acme.test).',
+        'Talk to us',
+        'Book a meeting (https://acme.test/meet).',
+        'Acme Inc.',
+      ].join('\n\n') + '\n',
+    );
+  });
+
+  it('follows the layout order and leaves out empty parts', () => {
+    const text = renderText(
+      template({ order: normaliseOrder(['footer', 'heading']), intro: '', details: '', panelTitle: '', panelText: '', buttonUrl: '' }),
+      anna,
+    );
+    expect(text).toBe('Acme Inc.\n\nHi Anna\n\nAcme\n');
+  });
+
+  it('drops unsafe link targets', () => {
+    const text = renderText(template({ intro: '[click](javascript:x)' }), anna);
+    expect(text).toContain('\n\nclick\n\n');
+    expect(text).not.toContain('javascript');
   });
 });
